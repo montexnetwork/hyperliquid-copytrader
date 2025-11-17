@@ -1,4 +1,4 @@
-import { EventClient, WebSocketTransport } from '@nktkas/hyperliquid';
+import { EventClient, WebSocketTransport, WsAllMids } from '@nktkas/hyperliquid';
 
 export class MidsCacheService {
   private midsCache: Map<string, number> = new Map();
@@ -23,9 +23,11 @@ export class MidsCacheService {
     this.wsTransport = new WebSocketTransport({ url: wsUrl });
     this.eventClient = new EventClient({ transport: this.wsTransport });
 
-    this.subscription = await this.eventClient.allMids((mids: Record<string, string>) => {
-      Object.entries(mids).forEach(([coin, mid]) => {
-        this.midsCache.set(coin, parseFloat(mid));
+    this.subscription = await this.eventClient.allMids((data: WsAllMids) => {
+      Object.entries(data).forEach(([coin, mid]) => {
+        if (typeof mid === 'string') {
+          this.midsCache.set(coin, parseFloat(mid));
+        }
       });
     });
 

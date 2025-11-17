@@ -1,6 +1,7 @@
 import type { PositionChange } from '../models/change.model';
 import type { Position } from '../models';
 import { IgnoreListService } from './ignore-list.service';
+import { AccumulationTrackerService } from './accumulation-tracker.service';
 import { scaleChangeAmount, formatScaledSize } from '../utils/scaling.utils';
 
 export interface ActionRecommendation {
@@ -15,27 +16,45 @@ export interface ActionRecommendation {
 export class ActionCopyService {
   constructor(
     private ignoreListService: IgnoreListService,
+    private accumulationTracker: AccumulationTrackerService,
     private balanceRatio: number
   ) {}
 
   getRecommendation(
     change: PositionChange,
-    userPositions: Position[]
+    userPositions: Position[],
+    trackedPositions: Position[]
   ): ActionRecommendation | null {
     const userPosition = userPositions.find(p => p.coin === change.coin);
+    const trackedPosition = trackedPositions.find(p => p.coin === change.coin);
     const isIgnored = this.ignoreListService.isIgnored(change.coin);
     const ignoredSide = this.ignoreListService.getIgnoredSide(change.coin);
 
     if (isIgnored) {
-      return this.handleIgnoredPosition(change, userPosition, ignoredSide);
+      return this.handleIgnoredPosition(change, userPosition, trackedPosition, ignoredSide);
     } else {
       return this.handleTrackedPosition(change, userPosition);
+    }
+  }
+
+  private isPriceFavorable(
+    side: 'long' | 'short',
+    currentPrice: number,
+    trackedEntryPrice: number
+  ): boolean {
+    if (side === 'long') {
+      // For longs: only enter/add if current price < tracked entry (buying cheaper)
+      return currentPrice < trackedEntryPrice;
+    } else {
+      // For shorts: only enter/add if current price > tracked entry (selling higher)
+      return currentPrice > trackedEntryPrice;
     }
   }
 
   private handleIgnoredPosition(
     change: PositionChange,
     userPosition: Position | undefined,
+    trackedPosition: Position | undefined,
     ignoredSide: 'long' | 'short' | null
   ): ActionRecommendation | null {
     if (change.type === 'reversed') {
@@ -63,6 +82,32 @@ export class ActionCopyService {
         reason: `Tracked wallet closed pre-existing ${change.coin} position. Removed from ignore list.`,
         isIgnored: true
       };
+    }
+
+    // Check if they're adding to position at a favorable price (averaging down/up)
+    if (change.type === 'increased' && trackedPosition) {
+      const entryPrice = trackedPosition.entryPrice;
+      const markPrice = trackedPosition.markPrice;
+      const isFavorable = this.isPriceFavorable(change.newSide, markPrice, entryPrice);
+
+      if (isFavorable) {
+        // Current price is better than their averaged entry - we should enter!
+        this.ignoreListService.removeFromIgnoreList(change.coin);
+        const scaledSize = formatScaledSize(scaleChangeAmount(change.newSize, this.balanceRatio));
+
+        // Record accumulation
+        this.accumulationTracker.recordEntry(change.coin, scaledSize, change.newSize);
+
+        const pnlStatus = trackedPosition.unrealizedPnl < 0 ? `underwater $${trackedPosition.unrealizedPnl.toFixed(2)}` : `profitable $${trackedPosition.unrealizedPnl.toFixed(2)}`;
+        return {
+          action: 'open',
+          coin: change.coin,
+          side: change.newSide,
+          size: scaledSize,
+          reason: `Tracked wallet adding to ${change.coin} ${change.newSide.toUpperCase()} (${pnlStatus}). Mark $${markPrice.toFixed(2)} < Entry $${entryPrice.toFixed(2)}. Entering at favorable price.`,
+          isIgnored: false
+        };
+      }
     }
 
     return {
@@ -103,12 +148,16 @@ export class ActionCopyService {
   private handleOpened(change: PositionChange): ActionRecommendation {
     const scaledSize = formatScaledSize(scaleChangeAmount(change.newSize, this.balanceRatio));
 
+    // For opens, we don't have historical price to compare
+    // Store the entry price for future comparisons
+    this.accumulationTracker.recordEntry(change.coin, scaledSize, change.newSize);
+
     return {
       action: 'open',
       coin: change.coin,
       side: change.newSide,
       size: scaledSize,
-      reason: `Tracked wallet opened new ${change.newSide.toUpperCase()} position in ${change.coin}.`,
+      reason: `Tracked wallet opened new ${change.newSide.toUpperCase()} position in ${change.coin} @ $${change.newPrice.toFixed(2)}.`,
       isIgnored: false
     };
   }
@@ -117,6 +166,9 @@ export class ActionCopyService {
     change: PositionChange,
     userPosition: Position | undefined
   ): ActionRecommendation {
+    // Reset accumulation tracker for this coin
+    this.accumulationTracker.reset(change.coin);
+
     if (!userPosition) {
       return {
         action: 'ignore',
@@ -172,24 +224,47 @@ export class ActionCopyService {
     const changeAmount = change.newSize - change.previousSize;
     const scaledChangeAmount = formatScaledSize(scaleChangeAmount(changeAmount, this.balanceRatio));
 
+    // Check if price is favorable for adding
+    // For longs: only add if price decreased (buying cheaper)
+    // For shorts: only add if price increased (selling higher)
+    const previousPrice = change.previousPrice || change.newPrice;
+    const isFavorable = this.isPriceFavorable(change.newSide, change.newPrice, previousPrice);
+
+    if (!isFavorable) {
+      return {
+        action: 'ignore',
+        coin: change.coin,
+        side: change.newSide,
+        size: 0,
+        reason: `Tracked wallet increased ${change.coin} ${change.newSide.toUpperCase()}, but price is unfavorable (${change.newSide === 'long' ? 'increased' : 'decreased'} from $${previousPrice.toFixed(2)} to $${change.newPrice.toFixed(2)}). Waiting for better entry.`,
+        isIgnored: false
+      };
+    }
+
     if (!userPosition) {
       const scaledTotalSize = formatScaledSize(scaleChangeAmount(change.newSize, this.balanceRatio));
+      // Record accumulation
+      this.accumulationTracker.recordEntry(change.coin, scaledTotalSize, change.newSize);
+
       return {
         action: 'open',
         coin: change.coin,
         side: change.newSide,
         size: scaledTotalSize,
-        reason: `Tracked wallet increased ${change.coin} but you don't have it yet. Opening new position.`,
+        reason: `Tracked wallet increased ${change.coin} but you don't have it yet. Opening new position @ $${change.newPrice.toFixed(2)}.`,
         isIgnored: false
       };
     }
+
+    // Record accumulation and update tracked size
+    this.accumulationTracker.recordEntry(change.coin, scaledChangeAmount, change.newSize);
 
     return {
       action: 'add',
       coin: change.coin,
       side: change.newSide,
       size: scaledChangeAmount,
-      reason: `Tracked wallet increased ${change.coin} ${change.newSide.toUpperCase()} by ${changeAmount.toFixed(4)}.`,
+      reason: `Tracked wallet increased ${change.coin} ${change.newSide.toUpperCase()} by ${changeAmount.toFixed(4)} @ favorable price $${change.newPrice.toFixed(2)}.`,
       isIgnored: false
     };
   }
@@ -209,15 +284,40 @@ export class ActionCopyService {
       };
     }
 
+    // Calculate tracked wallet's reduction percentage
+    const trackedReductionPercentage = ((change.previousSize - change.newSize) / change.previousSize) * 100;
+
+    // Get our accumulated percentage of their position
+    const accumulatedPercentage = this.accumulationTracker.getAccumulatedPercentage(change.coin);
+
+    // If they reduced more than we've accumulated, close 100%
+    if (trackedReductionPercentage > accumulatedPercentage) {
+      // Reset accumulation
+      this.accumulationTracker.reset(change.coin);
+
+      return {
+        action: 'close',
+        coin: change.coin,
+        side: change.newSide,
+        size: userPosition.size,
+        reason: `Tracked wallet reduced ${change.coin} by ${trackedReductionPercentage.toFixed(1)}%, but you only accumulated ${accumulatedPercentage.toFixed(1)}% of their position. Closing 100% of your position.`,
+        isIgnored: false
+      };
+    }
+
+    // Otherwise, reduce proportionally
     const changeAmount = change.previousSize - change.newSize;
     const scaledChangeAmount = formatScaledSize(scaleChangeAmount(changeAmount, this.balanceRatio));
+
+    // Update tracked size in accumulation tracker
+    this.accumulationTracker.updateTrackedSize(change.coin, change.newSize);
 
     return {
       action: 'reduce',
       coin: change.coin,
       side: change.newSide,
       size: scaledChangeAmount,
-      reason: `Tracked wallet decreased ${change.coin} ${change.newSide.toUpperCase()} by ${changeAmount.toFixed(4)}.`,
+      reason: `Tracked wallet decreased ${change.coin} ${change.newSide.toUpperCase()} by ${changeAmount.toFixed(4)} (${trackedReductionPercentage.toFixed(1)}%).`,
       isIgnored: false
     };
   }

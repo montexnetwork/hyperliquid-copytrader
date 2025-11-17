@@ -3,7 +3,9 @@ import { HyperliquidService } from './services/hyperliquid.service';
 import { MonitoringService } from './services/monitoring.service';
 import { IgnoreListService } from './services/ignore-list.service';
 import { ActionCopyService } from './services/action-copy.service';
+import { AccumulationTrackerService } from './services/accumulation-tracker.service';
 import { TelegramService } from './services/telegram.service';
+import type { Position } from './models';
 import {
   displayPositionChange,
   displayActionRecommendation,
@@ -19,15 +21,17 @@ const DEFAULT_POLL_INTERVAL = 1000;
 const monitorTrackedWallet = async (
   trackedWallet: string,
   userWallet: string | null,
+  privateKey: string | null,
   pollInterval: number,
   isTestnet: boolean,
   telegramService: TelegramService
 ): Promise<void> => {
-  const service = new HyperliquidService(null, null, isTestnet);
+  const service = new HyperliquidService(privateKey, userWallet, isTestnet);
   await service.initialize();
 
   const monitoringService = new MonitoringService();
   const ignoreListService = new IgnoreListService();
+  const accumulationTracker = new AccumulationTrackerService();
   const startTime = Date.now();
 
   let actionCopyService: ActionCopyService | null = null;
@@ -48,7 +52,7 @@ const monitorTrackedWallet = async (
         service.getAccountBalance(trackedWallet)
       ]);
 
-      let userPositions = [];
+      let userPositions: Position[] = [];
       let userBalance = null;
 
       if (userWallet) {
@@ -63,7 +67,7 @@ const monitorTrackedWallet = async (
         );
 
         if (isFirstRun) {
-          actionCopyService = new ActionCopyService(ignoreListService, balanceRatio);
+          actionCopyService = new ActionCopyService(ignoreListService, accumulationTracker, balanceRatio);
         }
       }
 
@@ -106,25 +110,95 @@ const monitorTrackedWallet = async (
 
         isFirstRun = false;
       } else if (changes.length > 0) {
-        for (const change of changes) {
+        // Process all changes and execute trades in parallel
+        const tradeExecutions = changes.map(async (change) => {
           displayPositionChange(change);
-
-          // Send telegram notification for position change
-          if (telegramService.isEnabled()) {
-            await telegramService.sendPositionChange(change);
-          }
 
           if (userWallet && actionCopyService) {
             const recommendation = actionCopyService.getRecommendation(
               change,
-              userPositions
+              userPositions,
+              trackedPositions
             );
 
             if (recommendation) {
               displayActionRecommendation(recommendation);
+
+              // Execute the trade if action is not 'ignore'
+              if (recommendation.action !== 'ignore' && service.canExecuteTrades()) {
+                try {
+                  let orderResponse;
+
+                  switch (recommendation.action) {
+                    case 'open':
+                      if (recommendation.side === 'long') {
+                        orderResponse = await service.openLong(recommendation.coin, recommendation.size);
+                      } else {
+                        orderResponse = await service.openShort(recommendation.coin, recommendation.size);
+                      }
+                      console.log(`  ✓ Executed: ${recommendation.action.toUpperCase()} ${recommendation.side.toUpperCase()} ${recommendation.size} ${recommendation.coin}`);
+                      break;
+
+                    case 'close':
+                      orderResponse = await service.closePosition(recommendation.coin, recommendation.size);
+                      console.log(`  ✓ Executed: CLOSED ${recommendation.size} ${recommendation.coin}`);
+                      break;
+
+                    case 'add':
+                      if (recommendation.side === 'long') {
+                        orderResponse = await service.openLong(recommendation.coin, recommendation.size);
+                      } else {
+                        orderResponse = await service.openShort(recommendation.coin, recommendation.size);
+                      }
+                      console.log(`  ✓ Executed: ADDED ${recommendation.size} ${recommendation.coin} ${recommendation.side.toUpperCase()}`);
+                      break;
+
+                    case 'reduce':
+                      orderResponse = await service.reducePosition(recommendation.coin, recommendation.size);
+                      console.log(`  ✓ Executed: REDUCED ${recommendation.size} ${recommendation.coin}`);
+                      break;
+
+                    case 'reverse':
+                      // First close the old position
+                      const currentPos = userPositions.find(p => p.coin === recommendation.coin);
+                      if (currentPos) {
+                        await service.closePosition(recommendation.coin);
+                        console.log(`  ✓ Executed: CLOSED old ${currentPos.side.toUpperCase()} position`);
+                      }
+
+                      // Then open the new position
+                      if (recommendation.side === 'long') {
+                        orderResponse = await service.openLong(recommendation.coin, recommendation.size);
+                      } else {
+                        orderResponse = await service.openShort(recommendation.coin, recommendation.size);
+                      }
+                      console.log(`  ✓ Executed: OPENED new ${recommendation.side.toUpperCase()} ${recommendation.size} ${recommendation.coin}`);
+                      break;
+                  }
+
+                  // Send Telegram notification for successful execution (non-blocking)
+                  if (telegramService.isEnabled() && orderResponse) {
+                    telegramService.sendTradeExecutionWithChange(change, recommendation, orderResponse).catch(err => {
+                      console.error('Failed to send Telegram notification:', err instanceof Error ? err.message : err);
+                    });
+                  }
+
+                } catch (error) {
+                  const errorMessage = error instanceof Error ? error.message : String(error);
+                  console.error(`  ✗ Trade execution failed: ${errorMessage}`);
+
+                  // Send Telegram error notification (non-blocking)
+                  if (telegramService.isEnabled()) {
+                    telegramService.sendError(`Trade execution failed for ${recommendation.coin}: ${errorMessage}`).catch(() => {});
+                  }
+                }
+              }
             }
           }
-        }
+        });
+
+        // Wait for all trades to execute in parallel
+        await Promise.allSettled(tradeExecutions);
 
         // Update telegram stats after changes
         if (telegramService.isEnabled()) {
@@ -202,7 +276,7 @@ const main = async (): Promise<void> => {
     console.log('✓ Telegram notifications enabled');
   }
 
-  await monitorTrackedWallet(config.trackedWallet, config.userWallet, pollInterval, config.isTestnet, telegramService);
+  await monitorTrackedWallet(config.trackedWallet, config.userWallet, config.privateKey, pollInterval, config.isTestnet, telegramService);
 };
 
 main();

@@ -133,7 +133,7 @@ export class HyperliquidService {
         entryPrice: parseFloat(pos.position.entryPx || '0'),
         markPrice: parseFloat(pos.position.positionValue) / Math.abs(size),
         unrealizedPnl: parseFloat(pos.position.unrealizedPnl),
-        leverage: parseFloat(pos.position.leverage.value),
+        leverage: typeof pos.position.leverage.value === 'number' ? pos.position.leverage.value : parseFloat(pos.position.leverage.value),
         marginUsed: parseFloat(pos.position.marginUsed),
         liquidationPrice: parseFloat(pos.position.liquidationPx || '0'),
         side: size > 0 ? 'long' : 'short'
