@@ -10,6 +10,7 @@ export interface Config {
   isTestnet: boolean;
   telegramBotToken: string | null;
   telegramChatId: string | null;
+  minOrderValue: number;
 }
 
 const validateWalletAddress = (address: string | undefined, name: string): string | null => {
@@ -39,6 +40,7 @@ export const loadConfig = (): Config => {
   const isTestnet = process.env.IS_TESTNET === 'true';
   const telegramBotToken = process.env.TELEGRAM_BOT_TOKEN || null;
   const telegramChatId = process.env.TELEGRAM_CHAT_ID || null;
+  const minOrderValue = process.env.MIN_ORDER_VALUE ? parseFloat(process.env.MIN_ORDER_VALUE) : 10;
 
   return {
     privateKey,
@@ -46,7 +48,8 @@ export const loadConfig = (): Config => {
     trackedWallet,
     isTestnet,
     telegramBotToken,
-    telegramChatId
+    telegramChatId,
+    minOrderValue
   };
 };
 

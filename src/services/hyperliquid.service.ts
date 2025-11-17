@@ -10,6 +10,8 @@ import { privateKeyToAccount } from 'viem/accounts';
 import type { Position, Order, Balance } from '../models';
 import { MidsCacheService } from './mids-cache.service';
 import { MetaCacheService } from './meta-cache.service';
+import { validateAndAdjustOrderSize } from '../utils/order-validation.utils';
+import { loadConfig } from '../config';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -23,10 +25,12 @@ export class HyperliquidService {
   private initialized: boolean = false;
   private tickSizeCache: Map<string, number> = new Map();
   private readonly TICK_SIZE_CACHE_FILE = path.resolve(process.cwd(), 'data', 'tick-sizes.json');
+  private minOrderValue: number;
 
   constructor(privateKey: string | null, walletAddress: string | null, isTestnet: boolean = false) {
     this.isTestnet = isTestnet;
     this.userAddress = walletAddress;
+    this.minOrderValue = loadConfig().minOrderValue;
 
     const httpUrl = isTestnet
       ? 'https://api.hyperliquid-testnet.xyz'
@@ -286,15 +290,31 @@ export class HyperliquidService {
   async placeMarketBuy(coin: string, size: number): Promise<OrderResponse> {
     this.ensureWalletClient();
     const coinIndex = await this.getCoinIndex(coin);
-    const price = await this.getMarketPrice(coin, true);
-    const formattedSize = await this.formatSize(size, coin);
+    const priceString = await this.getMarketPrice(coin, true);
+    const price = parseFloat(priceString);
+    const sizeDecimals = await this.getSizeDecimals(coin);
+    const initialFormattedSize = await this.formatSize(size, coin);
+
+    const validationResult = validateAndAdjustOrderSize(
+      size,
+      initialFormattedSize,
+      price,
+      this.minOrderValue,
+      sizeDecimals
+    );
+
+    if (validationResult.wasAdjusted) {
+      console.log(`   ⚠️  Adjusted BUY order size to meet $${this.minOrderValue} minimum:`);
+      console.log(`       ${initialFormattedSize} → ${validationResult.formattedSize} ${coin}`);
+      console.log(`       Order value: $${validationResult.originalOrderValue.toFixed(2)} → $${validationResult.finalOrderValue.toFixed(2)}`);
+    }
 
     return await this.walletClient!.order({
       orders: [{
         a: coinIndex,
         b: true,
-        p: price,
-        s: formattedSize,
+        p: priceString,
+        s: validationResult.formattedSize,
         r: false,
         t: { limit: { tif: 'Ioc' } }
       }],
@@ -305,15 +325,31 @@ export class HyperliquidService {
   async placeMarketSell(coin: string, size: number): Promise<OrderResponse> {
     this.ensureWalletClient();
     const coinIndex = await this.getCoinIndex(coin);
-    const price = await this.getMarketPrice(coin, false);
-    const formattedSize = await this.formatSize(size, coin);
+    const priceString = await this.getMarketPrice(coin, false);
+    const price = parseFloat(priceString);
+    const sizeDecimals = await this.getSizeDecimals(coin);
+    const initialFormattedSize = await this.formatSize(size, coin);
+
+    const validationResult = validateAndAdjustOrderSize(
+      size,
+      initialFormattedSize,
+      price,
+      this.minOrderValue,
+      sizeDecimals
+    );
+
+    if (validationResult.wasAdjusted) {
+      console.log(`   ⚠️  Adjusted SELL order size to meet $${this.minOrderValue} minimum:`);
+      console.log(`       ${initialFormattedSize} → ${validationResult.formattedSize} ${coin}`);
+      console.log(`       Order value: $${validationResult.originalOrderValue.toFixed(2)} → $${validationResult.finalOrderValue.toFixed(2)}`);
+    }
 
     return await this.walletClient!.order({
       orders: [{
         a: coinIndex,
         b: false,
-        p: price,
-        s: formattedSize,
+        p: priceString,
+        s: validationResult.formattedSize,
         r: false,
         t: { limit: { tif: 'Ioc' } }
       }],
