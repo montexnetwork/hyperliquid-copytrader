@@ -141,6 +141,8 @@ const monitorTrackedWallet = async (
   const startTime = Date.now();
   let balanceRatio = 1;
   let tradeHistoryService: TradeHistoryService | null = null;
+  let lastBalanceUpdate = 0;
+  const BALANCE_UPDATE_INTERVAL = 5 * 60 * 1000;
 
   console.log('\n🚀 Copy Trading Bot Started\n');
   console.log(`📊 Tracked Wallet: ${trackedWallet}`);
@@ -155,59 +157,75 @@ const monitorTrackedWallet = async (
 
   let isFirstRun = true;
 
+  const updateBalanceRatio = async (): Promise<void> => {
+    if (!userWallet) return;
+
+    const [trackedBalance, userBalance, userPositions] = await Promise.all([
+      service.getAccountBalance(trackedWallet),
+      service.getAccountBalance(userWallet),
+      service.getOpenPositions(userWallet)
+    ]);
+
+    const oldRatio = balanceRatio;
+    const newRatio = calculateBalanceRatio(
+      parseFloat(userBalance.accountValue),
+      parseFloat(trackedBalance.accountValue)
+    );
+
+    balanceRatio = newRatio;
+
+    if (tradeHistoryService) {
+      tradeHistoryService = new TradeHistoryService(service.publicClient, newRatio);
+    }
+
+    const ratioChangePercent = oldRatio !== 0 ? ((newRatio - oldRatio) / oldRatio) * 100 : 0;
+
+    console.log(`\n💰 Balance Update [${formatTimestamp(new Date())}]`);
+    console.log(`  Tracked Account: $${parseFloat(trackedBalance.accountValue).toFixed(2)}`);
+    console.log(`  Your Account: $${parseFloat(userBalance.accountValue).toFixed(2)}`);
+    console.log(`  Balance Ratio: 1:${newRatio.toFixed(4)} ${ratioChangePercent !== 0 ? `(${ratioChangePercent > 0 ? '+' : ''}${ratioChangePercent.toFixed(2)}%)` : ''}`);
+    console.log(`  Your Positions: ${userPositions.length}\n`);
+
+    if (telegramService.isEnabled()) {
+      telegramService.updateStats({
+        trackedWallet,
+        userWallet,
+        trackedPositions: 0,
+        trackedBalance: parseFloat(trackedBalance.accountValue),
+        userPositions: userPositions.length,
+        userBalance: parseFloat(userBalance.accountValue),
+        balanceRatio: newRatio,
+        ignoredCoins: [],
+        uptime: Date.now() - startTime
+      });
+    }
+
+    lastBalanceUpdate = Date.now();
+  };
+
   const poll = async (): Promise<void> => {
     try {
-      const [trackedBalance] = await Promise.all([
-        service.getAccountBalance(trackedWallet)
-      ]);
+      const now = Date.now();
+      const shouldUpdateBalance = isFirstRun || (now - lastBalanceUpdate) >= BALANCE_UPDATE_INTERVAL;
 
-      let userBalance = null;
-      let userPositions: any[] = [];
-
-      if (userWallet) {
-        [userPositions, userBalance] = await Promise.all([
-          service.getOpenPositions(userWallet),
-          service.getAccountBalance(userWallet)
-        ]);
-
-        balanceRatio = calculateBalanceRatio(
-          parseFloat(userBalance.accountValue),
-          parseFloat(trackedBalance.accountValue)
-        );
+      if (shouldUpdateBalance) {
+        await updateBalanceRatio();
 
         if (isFirstRun) {
-          tradeHistoryService = new TradeHistoryService(service.publicClient, balanceRatio);
+          console.log(`\n✅ Monitoring started - watching for trades...\n`);
+          if (userWallet) {
+            tradeHistoryService = new TradeHistoryService(service.publicClient, balanceRatio);
+          }
+          isFirstRun = false;
         }
       }
 
-      if (isFirstRun) {
-        console.log(`[${formatTimestamp(new Date())}] 📊 Initial State`);
-        console.log(`  Tracked Account Value: $${parseFloat(trackedBalance.accountValue).toFixed(2)}`);
+      let userPositions: any[] = [];
+      if (userWallet) {
+        userPositions = await service.getOpenPositions(userWallet);
+      }
 
-        if (userWallet && userBalance) {
-          console.log(`  Your Account Value: $${parseFloat(userBalance.accountValue).toFixed(2)}`);
-          console.log(`  Balance Ratio: 1:${balanceRatio.toFixed(4)}`);
-          console.log(`  Your Positions: ${userPositions.length}`);
-        }
-
-        console.log(`\n✅ Monitoring started - watching for trades...\n`);
-
-        if (telegramService.isEnabled()) {
-          telegramService.updateStats({
-            trackedWallet,
-            userWallet,
-            trackedPositions: 0,
-            trackedBalance: parseFloat(trackedBalance.accountValue),
-            userPositions: userPositions.length,
-            userBalance: userBalance ? parseFloat(userBalance.accountValue) : 0,
-            balanceRatio,
-            ignoredCoins: [],
-            uptime: Date.now() - startTime
-          });
-        }
-
-        isFirstRun = false;
-      } else if (userWallet && tradeHistoryService) {
+      if (userWallet && tradeHistoryService) {
         // Fetch new fills/trades
         const newFills = await tradeHistoryService.getNewFills(trackedWallet);
 
@@ -233,21 +251,6 @@ const monitorTrackedWallet = async (
           console.log('\n' + '━'.repeat(50) + '\n');
         } else {
           process.stdout.write(`\r[${formatTimestamp(new Date())}] ✓ No new trades - monitoring...`);
-        }
-
-        // Update telegram stats periodically
-        if (telegramService.isEnabled()) {
-          telegramService.updateStats({
-            trackedWallet,
-            userWallet,
-            trackedPositions: 0,
-            trackedBalance: parseFloat(trackedBalance.accountValue),
-            userPositions: userPositions.length,
-            userBalance: userBalance ? parseFloat(userBalance.accountValue) : 0,
-            balanceRatio,
-            ignoredCoins: [],
-            uptime: Date.now() - startTime
-          });
         }
       }
     } catch (error) {
