@@ -5,6 +5,8 @@ export interface PositionChange {
   newSize: number;
   previousSide?: 'long' | 'short';
   newSide: 'long' | 'short';
+  previousPrice?: number;
+  newPrice: number;
   timestamp: Date;
 }
 

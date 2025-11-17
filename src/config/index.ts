@@ -8,6 +8,8 @@ export interface Config {
   userWallet: string | null;
   trackedWallet: string | null;
   isTestnet: boolean;
+  telegramBotToken: string | null;
+  telegramChatId: string | null;
 }
 
 const validateWalletAddress = (address: string | undefined, name: string): string | null => {
@@ -35,12 +37,16 @@ export const loadConfig = (): Config => {
   const userWallet = validateWalletAddress(process.env.USER_WALLET, 'USER_WALLET');
   const trackedWallet = validateWalletAddress(process.env.TRACKED_WALLET, 'TRACKED_WALLET');
   const isTestnet = process.env.IS_TESTNET === 'true';
+  const telegramBotToken = process.env.TELEGRAM_BOT_TOKEN || null;
+  const telegramChatId = process.env.TELEGRAM_CHAT_ID || null;
 
   return {
     privateKey,
     userWallet,
     trackedWallet,
-    isTestnet
+    isTestnet,
+    telegramBotToken,
+    telegramChatId
   };
 };
 

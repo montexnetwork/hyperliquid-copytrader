@@ -48,6 +48,7 @@ export class MonitoringService {
           previousSize: 0,
           newSize: current.size,
           newSide: current.side,
+          newPrice: current.price,
           timestamp: currentSnapshot.timestamp
         });
       } else if (previous && !current) {
@@ -58,6 +59,8 @@ export class MonitoringService {
           newSize: 0,
           previousSide: previous.side,
           newSide: previous.side,
+          previousPrice: previous.price,
+          newPrice: previous.price,
           timestamp: currentSnapshot.timestamp
         });
       } else if (previous && current) {
@@ -69,6 +72,8 @@ export class MonitoringService {
             newSize: current.size,
             previousSide: previous.side,
             newSide: current.side,
+            previousPrice: previous.price,
+            newPrice: current.price,
             timestamp: currentSnapshot.timestamp
           });
         } else if (current.size !== previous.size) {
@@ -79,6 +84,8 @@ export class MonitoringService {
               previousSize: previous.size,
               newSize: current.size,
               newSide: current.side,
+              previousPrice: previous.price,
+              newPrice: current.price,
               timestamp: currentSnapshot.timestamp
             });
           } else {
@@ -88,6 +95,8 @@ export class MonitoringService {
               previousSize: previous.size,
               newSize: current.size,
               newSide: current.side,
+              previousPrice: previous.price,
+              newPrice: current.price,
               timestamp: currentSnapshot.timestamp
             });
           }
