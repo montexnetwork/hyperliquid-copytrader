@@ -239,140 +239,127 @@ Sends notifications and handles bot commands.
 **1. Load Configuration**
 - Reads `.env` file
 - Validates `TRACKED_WALLET` (required)
-- Loads optional `USER_WALLET`, `PRIVATE_KEY`, `IS_TESTNET`
+- Validates `USER_WALLET` and `PRIVATE_KEY` (required for execution)
+- Loads `MIN_ORDER_VALUE` (default: $10)
+- Loads `IS_TESTNET` setting
 
 **2. Initialize Services**
-- `HyperliquidService` connects to API
-- `MidsCacheService` starts WebSocket subscription
+- `HyperliquidService` connects to Hyperliquid API
+- `MidsCacheService` starts WebSocket price subscription
 - `MetaCacheService` loads coin metadata
 - `TelegramService` starts bot (if configured)
-- Logs: `✓ Mids cache initialized via WebSocket`
-- Logs: `✓ Meta cache initialized with X coins`
-- Logs: `✓ Telegram notifications enabled` (if configured)
 
-**3. Display Header**
-Shows monitoring setup:
+**3. Display Startup Info**
 ```
-========================================
-  HYPERLIQUID COPY TRADING MONITOR
-========================================
-Tracked Wallet: 0x1234...5678
-Your Wallet:    0xabcd...ef01
-Poll Interval:  1000ms
-========================================
+🚀 Copy Trading Bot Started
+
+📊 Tracked Wallet: 0xd477...6e7e
+👤 Your Wallet: 0x742d...0bEb
+⚡ Mode: Real-time WebSocket (Balance updates every 5min)
 ```
 
-**4. First Poll - Initial Snapshot**
-- Fetches tracked wallet positions & balance
-- Fetches your positions & balance (if USER_WALLET set)
-- Calculates balance ratio: `yourBalance / trackedBalance`
-- **Adds ALL current positions to ignore list**
-- Displays initial state:
-  ```
-  📊 Initial snapshot captured
-    Tracked Positions: 5
-    Tracked Balance (withdrawable): $10000.00
-    Your Positions: 3
-    Your Balance (withdrawable): $5000.00
-    Balance Ratio: 1:0.5000
+**4. Initial Balance Fetch**
+- Fetches tracked wallet balance (accountValue, withdrawable, marginUsed)
+- Fetches your wallet balance
+- Calculates balance ratio: `yourAccountValue / trackedAccountValue`
+- Displays initial state with balance ratio
 
-  🚫 Ignore List Initialized
-    • BTC LONG - will ignore until closed/reversed
-    • ETH SHORT - will ignore until closed/reversed
-  ```
+**5. WebSocket Subscription**
+- Subscribes to tracked wallet's `userFills` channel
+- Receives fills in real-time (10-50ms latency)
+- Starts listening for trades
 
-**5. Monitoring Loop**
-Polls every 1000ms (or custom interval):
-- Fetch current positions and balances
-- Create new snapshot
-- Detect changes
-- Display changes and recommendations
-- Repeat
-
-**No changes:**
+**6. Ready State**
 ```
-[2024-01-15 14:30:45] ✓ No changes detected - monitoring...
+✅ Monitoring started - watching for trades...
+✓ Real-time WebSocket monitoring active
 ```
 
-**With changes:**
+### Trade Execution Flow
+
+When the tracked wallet executes a trade:
+
+**1. Fill Received (10-50ms)**
 ```
-[2024-01-15 14:31:12] 📈 Position Change Detected
+[20:08:28] 🔔 NEW TRADE DETECTED (WebSocket)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Position: SOL
-Change: OPENED
-Side: LONG
-Size: 100.0
-Entry Price: $95.50
-Value: $9,550.00
+📈 Tracked Wallet: ADD LONG STRK
+   Size: 1814.1000 @ $0.2025
 
-💡 Trade Recommendation
-Action: OPEN LONG
-Coin: SOL
-Size: 50.0 (scaled to your balance)
-Estimated Value: $4,775.00
-Reason: Tracked wallet opened new position
+💡 YOUR ACTION:
+   ADD LONG 24.0039 STRK
+   Tracked wallet increased LONG position in STRK by 1814.1000 @ $0.20.
 ```
 
-**6. Cleanup (Ctrl+C)**
-- Closes WebSocket connections
-- Clears caches
-- Exits gracefully
+**2. Action Determination**
+- Analyzes the fill (buy/sell, size, coin)
+- Compares to your current positions
+- Determines action: `open`, `close`, `add`, `reduce`, or `reverse`
+- Calculates your size: `trackedSize * balanceRatio`
 
-### The "Clean Slate" Concept
-
-**Problem:**
-If you start monitoring when the tracked wallet already has positions open, how do you match their entry prices?
-
-**Solution: Clean Slate Approach**
-
-1. **On startup:** Add ALL existing positions to ignore list
-2. **During monitoring:**
-   - Ignore changes to pre-existing positions
-   - Only copy NEW positions opened after monitoring starts
-   - If ignored position closes → remove from ignore list
-   - If ignored position reverses → remove from ignore, copy new side
-
-**Benefits:**
-- Perfect entry price matching (you enter when they enter)
-- No guesswork about partial positions
-- Action-based copying (copy ACTIONS not STATES)
-- Eventually builds up to full portfolio mirror
-
-**Example Flow:**
-
+**3. Price & Validation**
 ```
-Startup:
-  Tracked wallet has: BTC LONG 1.0
-  → Add "BTC LONG" to ignore list
-
-Later - BTC closes:
-  Tracked wallet: BTC position closed
-  → Remove "BTC" from ignore list
-  → No action (don't close, you never had it)
-
-Later - BTC reverses to SHORT:
-  Tracked wallet: BTC SHORT 2.0
-  → Remove "BTC" from ignore list
-  → Recommend: OPEN SHORT 1.0 (scaled)
-
-Later - New position opens:
-  Tracked wallet: ETH LONG 50.0
-  → Not ignored (new position!)
-  → Recommend: OPEN LONG 25.0 (scaled)
+[DEBUG] STRK: Cached mid=$0.202680, slippage=1.005, adjusted=$0.203693, formatted=0.20370
+[DEBUG] BUY STRK: rawSize=24.00390000, formattedSize=24.0, orderPrice=0.20370, validationPrice=$0.202680
+[DEBUG] BUY STRK: calculatedValue=24.0 × 0.202680 = $4.8643
+[DEBUG] BUY STRK: validation ADJUSTED, finalSize=49.3, finalValue=$9.9921
 ```
+
+- Gets market price from WebSocket cache
+- Adds 0.5% slippage for execution
+- Validates order value using **base price** (without slippage)
+- If below $10 minimum, rounds size **up** using Math.ceil
+
+**4. Order Execution (60-250ms)**
+```
+⚠️  Adjusted BUY order size to meet $10 minimum:
+    24.0 → 49.3 STRK
+    Order value: $4.86 → $9.99
+
+✓ Executed: ADDED 49.3 STRK
+```
+
+**5. Telegram Notification (if enabled)**
+```
+✅ Trade Executed
+
+Coin: STRK
+Action: ADD LONG
+Size: 49.3
+Price: $0.2025
+
+Tracked wallet increased LONG position in STRK by 1814.1000 @ $0.20.
+```
+
+**Total time: 71-155ms** from fill detection to order placement
+
+### Balance Updates
+
+Every 5 minutes:
+```
+[20:15:00] ✓ Balance updated - WebSocket monitoring active
+
+💰 Balance Update [20:15:00]
+  Tracked Account: $25,431.50
+  Your Account: $12,000.00
+  Balance Ratio: 1:0.4718 (+2.3%)
+  Your Positions: 3
+```
+
+- Fetches fresh account balances
+- Recalculates balance ratio
+- Updates position sizing for future trades
+- Shows ratio change percentage
 
 ### Position Scaling
 
-All recommendations are automatically scaled to your account size.
+All trades are automatically scaled to match your portfolio size.
 
-**Balance Ratio:**
+**Balance Ratio Calculation:**
 ```typescript
-balanceRatio = yourWithdrawableBalance / trackedWithdrawableBalance
+balanceRatio = yourAccountValue / trackedAccountValue
 ```
-
-**Examples:**
-- Your balance: $5,000, Tracked: $10,000 → Ratio: 0.5
-- Your balance: $20,000, Tracked: $10,000 → Ratio: 2.0
 
 **Position Sizing:**
 ```typescript
@@ -381,18 +368,19 @@ yourSize = trackedSize * balanceRatio
 
 **Example:**
 ```
-Tracked wallet: Opens BTC LONG 1.0
-Your balance: $5,000
-Their balance: $10,000
-Ratio: 0.5
+Tracked wallet: Buys 1000 STRK
+Your account value: $12,000
+Their account value: $25,431
+Balance ratio: 0.4718
 
-Recommendation: Open BTC LONG 0.5
+Your trade: Buy 471.8 STRK (scaled)
 ```
 
-**Why withdrawable balance?**
-- More conservative than account value
-- Excludes unrealized PnL
-- Represents actual trading capital available
+**Why account value (not withdrawable)?**
+- Includes total portfolio value (equity + margin)
+- More accurate for portfolio percentage matching
+- Reflects actual capital allocation
+- Updates every 5 minutes
 
 ## Configuration Reference
 
@@ -401,195 +389,157 @@ Recommendation: Open BTC LONG 0.5
 | Variable | Required | Description | Example |
 |----------|----------|-------------|---------|
 | `TRACKED_WALLET` | Yes | Wallet address to copy trades from | `0x1234...5678` |
-| `USER_WALLET` | No | Your wallet address (for recommendations) | `0xabcd...ef01` |
-| `PRIVATE_KEY` | No | Your private key (for auto-execution) | `0x1234...` |
-| `IS_TESTNET` | No | Use Hyperliquid testnet | `false` |
+| `USER_WALLET` | Yes | Your wallet address | `0xabcd...ef01` |
+| `PRIVATE_KEY` | Yes | Your private key for trade execution | `0x1234...` |
+| `MIN_ORDER_VALUE` | No | Minimum order value in USD (default: 10) | `10` |
+| `IS_TESTNET` | No | Use Hyperliquid testnet (default: false) | `false` |
 | `TELEGRAM_BOT_TOKEN` | No | Telegram bot token from @BotFather | `123456789:ABC...` |
 | `TELEGRAM_CHAT_ID` | No | Your Telegram chat ID from @userinfobot | `123456789` |
-
-### CLI Flags
-
-| Flag | Description | Example |
-|------|-------------|---------|
-| `--interval=<ms>` | Custom polling interval (min: 1000ms) | `--interval=5000` |
-
-## Modes
-
-### Monitor Mode (default)
-Continuous real-time monitoring with recommendations.
-
-**Requirements:**
-- `TRACKED_WALLET` in .env
-- Optional: `USER_WALLET` for recommendations
-
-**Run:**
-```bash
-npm start
-```
-
-### Compare Mode
-One-time snapshot comparison.
-
-**Requirements:**
-- `TRACKED_WALLET` in .env
-- Optional: `USER_WALLET` for comparison
-
-**Run:**
-```bash
-npm run compare
-```
-
-**Output:**
-- Account balances
-- Balance ratio
-- Position comparisons
-- Trade recommendations (one-time)
-- Detailed position views
 
 ## Example Output
 
 ### Initial Startup
 ```
-========================================
-  HYPERLIQUID COPY TRADING MONITOR
-========================================
-Tracked Wallet: 0xd47776750bf095ae3f0461e06ce312c2e6026e7e
-Your Wallet:    0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb
-Poll Interval:  1000ms
-========================================
+🚀 Copy Trading Bot Started
 
+📊 Tracked Wallet: 0xd477...6e7e
+👤 Your Wallet: 0x742d...0bEb
+⚡ Mode: Real-time WebSocket (Balance updates every 5min)
+
+✓ Loaded 500 tick sizes from cache
 ✓ Mids cache initialized via WebSocket
 ✓ Meta cache initialized with 247 coins
 ✓ Telegram notifications enabled
 
-[2024-01-15 14:30:12] 📊 Initial snapshot captured
-  Tracked Positions: 3
-  Tracked Balance (withdrawable): $25,431.50
-  Your Positions: 1
-  Your Balance (withdrawable): $12,000.00
+💰 Balance Update [14:30:12]
+  Tracked Account: $25,431.50
+  Your Account: $12,000.00
   Balance Ratio: 1:0.4718
+  Your Positions: 3
 
-🚫 Ignore List Initialized
-  • BTC LONG - will ignore until closed/reversed
-  • ETH SHORT - will ignore until closed/reversed
-  • SOL LONG - will ignore until closed/reversed
-
-[2024-01-15 14:30:13] ✓ No changes detected - monitoring...
+✅ Monitoring started - watching for trades...
+✓ WebSocket fills subscription initialized for 0xd477...6e7e
+✓ Real-time WebSocket monitoring active
 ```
 
-### Position Opened
+### Trade Execution - Open Position
 ```
-[2024-01-15 14:35:22] 📈 Position Change Detected
+[14:35:22] 🔔 NEW TRADE DETECTED (WebSocket)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Position: AVAX
-Change: OPENED
-Side: LONG
-Size: 500.0
-Entry Price: $38.25
-Value: $19,125.00
+📈 Tracked Wallet: OPEN LONG AVAX
+   Size: 500.0000 @ $38.25
 
-💡 Trade Recommendation
-Action: OPEN LONG
-Coin: AVAX
-Size: 235.9 (scaled to your balance)
-Estimated Value: $9,023.48
-Reason: Tracked wallet opened new position
-```
+💡 YOUR ACTION:
+   OPEN LONG 235.9000 AVAX
+   Tracked wallet opened new LONG position in AVAX.
 
-### Position Increased
-```
-[2024-01-15 14:42:15] 📈 Position Change Detected
+   [DEBUG] AVAX: Cached mid=$38.250000, slippage=1.005, adjusted=$38.441250, formatted=38.44
+   [DEBUG] BUY AVAX: rawSize=235.90000000, formattedSize=235.9, orderPrice=38.44, validationPrice=$38.250000
+   [DEBUG] BUY AVAX: calculatedValue=235.9 × 38.250000 = $9023.4750
+   [DEBUG] BUY AVAX: validation PASSED, finalSize=235.9, finalValue=$9023.4750
 
-Position: AVAX
-Change: INCREASED
-Side: LONG
-Size Change: 500.0 → 750.0 (+250.0)
-Value Change: $19,125.00 → $28,687.50
+   ✓ Executed: OPENED LONG 235.9000 AVAX
 
-💡 Trade Recommendation
-Action: ADD TO LONG
-Coin: AVAX
-Size: 117.95 (additional)
-New Total: 353.85
-Estimated Value: $13,535.21
-Reason: Tracked wallet increased position
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
-### Position Reversed (Ignored)
+### Trade Execution - Add to Position (Below $10 Adjusted)
 ```
-[2024-01-15 15:10:03] 🔄 Position Change Detected
+[14:42:15] 🔔 NEW TRADE DETECTED (WebSocket)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Position: BTC
-Change: REVERSED
-Previous: LONG 1.0
-Current: SHORT 2.0
+📈 Tracked Wallet: ADD LONG STRK
+   Size: 1814.1000 @ $0.2025
 
-💡 Trade Recommendation
-Action: OPEN SHORT
-Coin: BTC
-Size: 0.9436 (scaled to your balance)
-Estimated Value: $42,500.00
-Reason: Tracked wallet reversed position (removed from ignore list)
+💡 YOUR ACTION:
+   ADD LONG 24.0039 STRK
+   Tracked wallet increased LONG position in STRK by 1814.1000 @ $0.20.
+
+   [DEBUG] STRK: No cached mid, fetching from orderbook
+   [DEBUG] STRK: Orderbook price=$0.202680, slippage=1.005, adjusted=$0.203693, formatted=0.20370
+   [DEBUG] BUY STRK: rawSize=24.00390000, formattedSize=24.0, orderPrice=0.20370, validationPrice=$0.202680
+   [DEBUG] BUY STRK: calculatedValue=24.0 × 0.202680 = $4.8643
+   [DEBUG] BUY STRK: validation ADJUSTED, finalSize=49.3, finalValue=$9.9921
+
+   ⚠️  Adjusted BUY order size to meet $10 minimum:
+       24.0 → 49.3 STRK
+       Order value: $4.86 → $9.99
+
+   ✓ Executed: ADDED 49.3000 STRK
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+
+### Trade Execution - Reverse Position
+```
+[15:10:03] 🔔 NEW TRADE DETECTED (WebSocket)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📈 Tracked Wallet: REVERSE SHORT BTC
+   Size: 2.0000 @ $45,100.00
+
+💡 YOUR ACTION:
+   REVERSE SHORT 0.9436 BTC
+   Tracked wallet reversed from LONG to SHORT.
+
+   ✓ Closed old position
+   ✓ Executed: OPENED new SHORT 0.9436 BTC
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+
+### Balance Update (Every 5 Minutes)
+```
+[15:15:00] ✓ Balance updated - WebSocket monitoring active
+
+💰 Balance Update [15:15:00]
+  Tracked Account: $26,123.45
+  Your Account: $12,450.30
+  Balance Ratio: 1:0.4767 (+1.0%)
+  Your Positions: 4
 ```
 
 ## Telegram Notifications
 
-When Telegram is configured, you'll receive real-time notifications for all position changes.
+When Telegram is configured, you'll receive real-time notifications for all trade executions and errors.
 
 ### Notification Types
 
-**Position Opened:**
+**Trade Executed:**
 ```
-📈 Position OPENED
+✅ Trade Executed
 
 Coin: AVAX
-Side: LONG
-Size: 500.0
-Entry Price: $38.25
-Value: $19,125.00
+Action: OPEN LONG
+Size: 235.9
+Price: $38.25
+
+Tracked wallet opened new LONG position in AVAX.
 ```
 
-**Position Closed:**
+**Trade Execution with Adjustment:**
 ```
-📉 Position CLOSED
+✅ Trade Executed
 
-Coin: BTC
-Side: LONG
-Size Closed: 1.5
-Exit Price: $45,230.00
-```
+Coin: STRK
+Action: ADD LONG
+Size: 49.3
+Price: $0.2025
 
-**Position Increased:**
-```
-⬆️ Position INCREASED
+⚠️  Order size adjusted from 24.0 to 49.3 to meet $10 minimum
 
-Coin: ETH
-Side: LONG
-Size Change: 10.0 → 15.0 (+5.0)
-Price: $2,340.50
-New Value: $35,107.50
+Tracked wallet increased LONG position in STRK by 1814.1000 @ $0.20.
 ```
 
-**Position Decreased:**
+**Trade Execution Failed:**
 ```
-⬇️ Position DECREASED
-
-Coin: SOL
-Side: SHORT
-Size Change: 100.0 → 75.0 (-25.0)
-Price: $95.30
-New Value: $7,147.50
-```
-
-**Position Reversed:**
-```
-🔄 Position REVERSED
+❌ Trade Execution Failed
 
 Coin: BTC
-Previous: LONG 1.0
-Current: SHORT 2.0
-Price: $45,100.00
-Value: $90,200.00
+Error: Cannot process API request: Insufficient margin
+
+Please check your account and try again.
 ```
 
 ### Status Command
@@ -604,26 +554,28 @@ Positions: 3
 Balance: $25,431.50
 
 Your Wallet: 0x742d...0bEb
-Positions: 1
-Balance: $12,000.00
-Balance Ratio: 1:0.4718
-
-Ignored Positions: 3
-  • BTC LONG
-  • ETH SHORT
-  • SOL LONG
+Positions: 4
+Balance: $12,450.30
+Balance Ratio: 1:0.4767
 
 Uptime: 2h 15m
+Last trade: 5m ago
 ```
 
 ### Error Notifications
 
-You'll also receive notifications when errors occur:
+You'll also receive notifications when system errors occur:
 
 ```
 ❌ Error
 
-Failed to fetch positions: Network timeout
+WebSocket connection lost. Reconnecting...
+```
+
+```
+❌ Error
+
+Failed to fetch balance: Network timeout
 ```
 
 ## Development
@@ -636,30 +588,25 @@ npm run build
 ### Project Structure
 ```
 src/
-├── config/              # .env configuration
+├── config/              # Environment configuration
+│   └── index.ts
 ├── models/              # TypeScript interfaces
 │   ├── position.model.ts
 │   ├── order.model.ts
 │   ├── balance.model.ts
-│   ├── change.model.ts
-│   └── comparison.model.ts
+│   └── ohlc.model.ts
 ├── services/            # Core business logic
-│   ├── hyperliquid.service.ts
-│   ├── mids-cache.service.ts
-│   ├── meta-cache.service.ts
-│   ├── monitoring.service.ts
-│   ├── ignore-list.service.ts
-│   ├── action-copy.service.ts
-│   ├── trade-execution.service.ts
-│   ├── telegram.service.ts
-│   └── copy-trading.service.ts
+│   ├── hyperliquid.service.ts      # API integration, order execution
+│   ├── websocket-fills.service.ts  # Real-time fill detection
+│   ├── trade-history.service.ts    # Action determination
+│   ├── mids-cache.service.ts       # Price caching (WebSocket)
+│   ├── meta-cache.service.ts       # Metadata caching
+│   └── telegram.service.ts         # Notifications
 ├── utils/               # Helper functions
-│   ├── display.utils.ts
-│   └── scaling.utils.ts
+│   ├── order-validation.utils.ts   # $10 minimum validation
+│   └── scaling.utils.ts             # Balance ratio calculation
 ├── setup.ts            # WebSocket polyfill
-├── monitor.ts          # Main monitoring app
-└── index.ts            # Comparison mode
-
+└── monitor.ts          # Main application entry point
 ```
 
 ## License
