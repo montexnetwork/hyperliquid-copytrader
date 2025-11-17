@@ -41,23 +41,32 @@ export class TradeHistoryService {
         startTime
       });
 
+      console.log(`[TradeHistory] Fetched ${fills.length} total fills for ${trackedWallet.slice(0, 6)}...${trackedWallet.slice(-4)}`);
+      console.log(`[TradeHistory] Time window: ${new Date(startTime).toISOString()} → now`);
+      console.log(`[TradeHistory] lastProcessedTime: ${new Date(cache.lastProcessedTime).toISOString()}`);
+
       // Filter to only new fills
       const newFills = fills.filter(fill => {
         const isNew = fill.time > cache.lastProcessedTime && !cache.tids.has(fill.tid);
+        if (!isNew) {
+          const reason = fill.time <= cache.lastProcessedTime ? 'old-time' : 'duplicate-tid';
+          console.log(`[TradeHistory] Filtered tid=${fill.tid}, coin=${fill.coin}, time=${new Date(fill.time).toISOString()}, reason: ${reason}`);
+        }
         return isNew;
       });
+
+      console.log(`[TradeHistory] ${newFills.length} new fills after filtering`);
 
       // Mark fills as processed
       newFills.forEach(fill => {
         cache.tids.add(fill.tid);
       });
 
-      // Update last processed time
+      // Update last processed time only when fills are found
+      // Don't update if no fills - let the lookback buffer catch delayed trades
       if (newFills.length > 0) {
         const latestTime = Math.max(...newFills.map(f => f.time));
         cache.lastProcessedTime = Math.max(cache.lastProcessedTime, latestTime);
-      } else {
-        cache.lastProcessedTime = Date.now();
       }
 
       // Cleanup old tids periodically
@@ -151,6 +160,7 @@ export class TradeHistoryService {
     }
 
     // No significant change
+    console.log(`[TradeHistory] No action determined for ${fill.coin}: prev=${prevPosition}, final=${finalPosition}, tradeSize=${tradeSize}`);
     return null;
   }
 

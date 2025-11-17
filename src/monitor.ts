@@ -29,6 +29,7 @@ const processFill = async (
     const action = tradeHistoryService.determineAction(fill);
 
     if (!action) {
+      console.log(`[Monitor] Fill ignored - determineAction returned null for ${fill.coin} tid=${fill.tid}`);
       return { success: true, coin: fill.coin };
     }
 
