@@ -298,17 +298,20 @@ export class HyperliquidService {
     this.ensureWalletClient();
     const coinIndex = await this.getCoinIndex(coin);
     const priceString = await this.getMarketPrice(coin, true);
-    const price = parseFloat(priceString);
+    const orderPrice = parseFloat(priceString);
     const sizeDecimals = await this.getSizeDecimals(coin);
     const initialFormattedSize = await this.formatSize(size, coin);
 
-    console.log(`   [DEBUG] BUY ${coin}: rawSize=${size.toFixed(8)}, formattedSize=${initialFormattedSize}, price=${priceString}`);
-    console.log(`   [DEBUG] BUY ${coin}: calculatedValue=${parseFloat(initialFormattedSize)} × ${price} = $${(parseFloat(initialFormattedSize) * price).toFixed(4)}`);
+    // API validates using market price without slippage, so we need to validate against that
+    const validationPrice = orderPrice / 1.005; // Remove the 0.5% slippage we added
+
+    console.log(`   [DEBUG] BUY ${coin}: rawSize=${size.toFixed(8)}, formattedSize=${initialFormattedSize}, orderPrice=${priceString}, validationPrice=$${validationPrice.toFixed(6)}`);
+    console.log(`   [DEBUG] BUY ${coin}: calculatedValue=${parseFloat(initialFormattedSize)} × ${validationPrice.toFixed(6)} = $${(parseFloat(initialFormattedSize) * validationPrice).toFixed(4)}`);
 
     const validationResult = validateAndAdjustOrderSize(
       size,
       initialFormattedSize,
-      price,
+      validationPrice,
       this.minOrderValue,
       sizeDecimals
     );
@@ -338,17 +341,20 @@ export class HyperliquidService {
     this.ensureWalletClient();
     const coinIndex = await this.getCoinIndex(coin);
     const priceString = await this.getMarketPrice(coin, false);
-    const price = parseFloat(priceString);
+    const orderPrice = parseFloat(priceString);
     const sizeDecimals = await this.getSizeDecimals(coin);
     const initialFormattedSize = await this.formatSize(size, coin);
 
-    console.log(`   [DEBUG] SELL ${coin}: rawSize=${size.toFixed(8)}, formattedSize=${initialFormattedSize}, price=${priceString}`);
-    console.log(`   [DEBUG] SELL ${coin}: calculatedValue=${parseFloat(initialFormattedSize)} × ${price} = $${(parseFloat(initialFormattedSize) * price).toFixed(4)}`);
+    // API validates using market price without slippage, so we need to validate against that
+    const validationPrice = orderPrice / 0.995; // Remove the 0.5% slippage we added
+
+    console.log(`   [DEBUG] SELL ${coin}: rawSize=${size.toFixed(8)}, formattedSize=${initialFormattedSize}, orderPrice=${priceString}, validationPrice=$${validationPrice.toFixed(6)}`);
+    console.log(`   [DEBUG] SELL ${coin}: calculatedValue=${parseFloat(initialFormattedSize)} × ${validationPrice.toFixed(6)} = $${(parseFloat(initialFormattedSize) * validationPrice).toFixed(4)}`);
 
     const validationResult = validateAndAdjustOrderSize(
       size,
       initialFormattedSize,
-      price,
+      validationPrice,
       this.minOrderValue,
       sizeDecimals
     );
