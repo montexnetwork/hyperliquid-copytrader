@@ -24,7 +24,8 @@ const processFill = async (
   service: HyperliquidService,
   tradeHistoryService: TradeHistoryService,
   userWallet: string,
-  telegramService: TelegramService
+  telegramService: TelegramService,
+  startTime: number
 ): Promise<FillProcessingResult> => {
   try {
     const action = tradeHistoryService.determineAction(fill);
@@ -34,11 +35,8 @@ const processFill = async (
       return { success: true, coin: fill.coin };
     }
 
-    console.log(`\n📈 Tracked Wallet: ${action.action.toUpperCase()} ${action.side.toUpperCase()} ${fill.coin}`);
-    console.log(`   Size: ${parseFloat(fill.sz).toFixed(4)} @ $${parseFloat(fill.px).toFixed(4)}`);
-    console.log(`\n💡 YOUR ACTION:`);
-    console.log(`   ${action.action.toUpperCase()} ${action.side.toUpperCase()} ${action.size.toFixed(4)} ${fill.coin}`);
-    console.log(`   ${action.reason}`);
+    console.log(`📈 Tracked Wallet: ${action.action.toUpperCase()} ${action.side.toUpperCase()} ${fill.coin} | Size: ${parseFloat(fill.sz).toFixed(4)} @ $${parseFloat(fill.px).toFixed(4)}`);
+    console.log(`💡 Your Action: ${action.action.toUpperCase()} ${action.side.toUpperCase()} ${action.size.toFixed(4)} ${fill.coin}`);
 
     if (!service.canExecuteTrades()) {
       return { success: true, coin: fill.coin, action: action.action };
@@ -91,6 +89,9 @@ const processFill = async (
         break;
     }
 
+    const executionTime = Date.now() - startTime;
+    console.log(`✓ Executed in ${executionTime}ms\n`);
+
     if (telegramService.isEnabled() && orderResponse) {
       telegramService.sendMessage(`✅ Trade Executed\n\nCoin: ${action.coin}\nAction: ${action.action.toUpperCase()} ${action.side.toUpperCase()}\nSize: ${action.size.toFixed(4)}\nPrice: $${parseFloat(fill.px).toFixed(4)}\n\n${action.reason}`).catch(() => {});
     }
@@ -98,7 +99,7 @@ const processFill = async (
     return { success: true, coin: action.coin, action: action.action };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    console.error(`   ✗ Trade execution failed for ${fill.coin}: ${errorMessage}`);
+    console.error(`✗ Trade execution failed for ${fill.coin}: ${errorMessage}`);
 
     if (telegramService.isEnabled()) {
       telegramService.sendError(`Trade execution failed for ${fill.coin}: ${errorMessage}`).catch(() => {});
@@ -200,10 +201,9 @@ const monitorTrackedWallet = async (
 
             webSocketFillsService = new WebSocketFillsService(isTestnet);
             await webSocketFillsService.initialize(trackedWallet, async (fill) => {
-              console.log(`\n[${formatTimestamp(new Date())}] 🔔 NEW TRADE DETECTED (WebSocket)`);
-              console.log('━'.repeat(50));
-              await processFill(fill, service, tradeHistoryService!, userWallet, telegramService);
-              console.log('\n' + '━'.repeat(50) + '\n');
+              const startTime = Date.now();
+              console.log(`\n[${formatTimestamp(new Date())}] 🔔 NEW TRADE DETECTED`);
+              await processFill(fill, service, tradeHistoryService!, userWallet, telegramService, startTime);
             });
             console.log('✓ Real-time WebSocket monitoring active\n');
           }
