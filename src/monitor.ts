@@ -128,34 +128,61 @@ const monitorTrackedWallet = async (
               if (recommendation.action !== 'ignore' && service.canExecuteTrades()) {
                 try {
                   let orderResponse;
+                  let adjustedSize = recommendation.size;
+
+                  // Check minimum order value ($10) and adjust size if needed
+                  const MIN_ORDER_VALUE = 10;
+                  const position = trackedPositions.find(p => p.coin === recommendation.coin);
+
+                  if (position && ['reduce', 'add', 'open'].includes(recommendation.action)) {
+                    const markPrice = position.markPrice;
+                    let executionPrice = markPrice;
+
+                    // Account for 0.5% slippage in the direction of the trade
+                    // BUY orders (long positions): price goes UP 0.5% (pay more)
+                    // SELL orders (short positions or reductions): price goes DOWN 0.5% (receive less)
+                    if (['open', 'add'].includes(recommendation.action) && recommendation.side === 'long') {
+                      executionPrice = markPrice * 1.005; // Buying: pay 0.5% more
+                    } else if (recommendation.action === 'reduce' ||
+                               (['open', 'add'].includes(recommendation.action) && recommendation.side === 'short')) {
+                      executionPrice = markPrice * 0.995; // Selling: receive 0.5% less
+                    }
+
+                    const orderValue = recommendation.size * executionPrice;
+
+                    if (orderValue < MIN_ORDER_VALUE) {
+                      adjustedSize = MIN_ORDER_VALUE / executionPrice;
+                      console.log(`  ⚠️  Order value $${orderValue.toFixed(2)} < $${MIN_ORDER_VALUE}. Adjusting size: ${recommendation.size.toFixed(4)} → ${adjustedSize.toFixed(4)} (using ${executionPrice > markPrice ? '+' : ''}${((executionPrice / markPrice - 1) * 100).toFixed(1)}% slippage)`);
+                    }
+                  }
 
                   switch (recommendation.action) {
                     case 'open':
                       if (recommendation.side === 'long') {
-                        orderResponse = await service.openLong(recommendation.coin, recommendation.size);
+                        orderResponse = await service.openLong(recommendation.coin, adjustedSize);
                       } else {
-                        orderResponse = await service.openShort(recommendation.coin, recommendation.size);
+                        orderResponse = await service.openShort(recommendation.coin, adjustedSize);
                       }
-                      console.log(`  ✓ Executed: ${recommendation.action.toUpperCase()} ${recommendation.side.toUpperCase()} ${recommendation.size} ${recommendation.coin}`);
+                      console.log(`  ✓ Executed: ${recommendation.action.toUpperCase()} ${recommendation.side.toUpperCase()} ${adjustedSize.toFixed(4)} ${recommendation.coin}`);
                       break;
 
                     case 'close':
                       orderResponse = await service.closePosition(recommendation.coin, recommendation.size);
-                      console.log(`  ✓ Executed: CLOSED ${recommendation.size} ${recommendation.coin}`);
+                      console.log(`  ✓ Executed: CLOSED ${recommendation.size.toFixed(4)} ${recommendation.coin}`);
                       break;
 
                     case 'add':
                       if (recommendation.side === 'long') {
-                        orderResponse = await service.openLong(recommendation.coin, recommendation.size);
+                        orderResponse = await service.openLong(recommendation.coin, adjustedSize);
                       } else {
-                        orderResponse = await service.openShort(recommendation.coin, recommendation.size);
+                        orderResponse = await service.openShort(recommendation.coin, adjustedSize);
                       }
-                      console.log(`  ✓ Executed: ADDED ${recommendation.size} ${recommendation.coin} ${recommendation.side.toUpperCase()}`);
+                      console.log(`  ✓ Executed: ADDED ${adjustedSize.toFixed(4)} ${recommendation.coin} ${recommendation.side.toUpperCase()}`);
                       break;
 
                     case 'reduce':
-                      orderResponse = await service.reducePosition(recommendation.coin, recommendation.size);
-                      console.log(`  ✓ Executed: REDUCED ${recommendation.size} ${recommendation.coin}`);
+                      orderResponse = await service.reducePosition(recommendation.coin, adjustedSize);
+                      console.log(`  ✓ Executed: REDUCED ${adjustedSize.toFixed(4)} ${recommendation.coin}`);
                       break;
 
                     case 'reverse':
@@ -168,11 +195,11 @@ const monitorTrackedWallet = async (
 
                       // Then open the new position
                       if (recommendation.side === 'long') {
-                        orderResponse = await service.openLong(recommendation.coin, recommendation.size);
+                        orderResponse = await service.openLong(recommendation.coin, adjustedSize);
                       } else {
-                        orderResponse = await service.openShort(recommendation.coin, recommendation.size);
+                        orderResponse = await service.openShort(recommendation.coin, adjustedSize);
                       }
-                      console.log(`  ✓ Executed: OPENED new ${recommendation.side.toUpperCase()} ${recommendation.size} ${recommendation.coin}`);
+                      console.log(`  ✓ Executed: OPENED new ${recommendation.side.toUpperCase()} ${adjustedSize.toFixed(4)} ${recommendation.coin}`);
                       break;
                   }
 

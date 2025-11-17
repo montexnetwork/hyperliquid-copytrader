@@ -93,20 +93,41 @@ export class ActionCopyService {
       if (isFavorable) {
         // Current price is better than their averaged entry - we should enter!
         this.ignoreListService.removeFromIgnoreList(change.coin);
-        const scaledSize = formatScaledSize(scaleChangeAmount(change.newSize, this.balanceRatio));
-
-        // Record accumulation
-        this.accumulationTracker.recordEntry(change.coin, scaledSize, change.newSize);
-
         const pnlStatus = trackedPosition.unrealizedPnl < 0 ? `underwater $${trackedPosition.unrealizedPnl.toFixed(2)}` : `profitable $${trackedPosition.unrealizedPnl.toFixed(2)}`;
-        return {
-          action: 'open',
-          coin: change.coin,
-          side: change.newSide,
-          size: scaledSize,
-          reason: `Tracked wallet adding to ${change.coin} ${change.newSide.toUpperCase()} (${pnlStatus}). Mark $${markPrice.toFixed(2)} < Entry $${entryPrice.toFixed(2)}. Entering at favorable price.`,
-          isIgnored: false
-        };
+
+        // Check if user already has this position
+        if (userPosition) {
+          // User has the position - ADD the incremental amount
+          const changeAmount = change.newSize - change.previousSize;
+          const scaledChangeAmount = formatScaledSize(scaleChangeAmount(changeAmount, this.balanceRatio));
+
+          // Record accumulation
+          this.accumulationTracker.recordEntry(change.coin, scaledChangeAmount, change.newSize);
+
+          return {
+            action: 'add',
+            coin: change.coin,
+            side: change.newSide,
+            size: scaledChangeAmount,
+            reason: `Tracked wallet adding to ${change.coin} ${change.newSide.toUpperCase()} (${pnlStatus}). Mark $${markPrice.toFixed(2)} < Entry $${entryPrice.toFixed(2)}. Adding to your existing position.`,
+            isIgnored: false
+          };
+        } else {
+          // User doesn't have the position - OPEN new position
+          const scaledSize = formatScaledSize(scaleChangeAmount(change.newSize, this.balanceRatio));
+
+          // Record accumulation
+          this.accumulationTracker.recordEntry(change.coin, scaledSize, change.newSize);
+
+          return {
+            action: 'open',
+            coin: change.coin,
+            side: change.newSide,
+            size: scaledSize,
+            reason: `Tracked wallet adding to ${change.coin} ${change.newSide.toUpperCase()} (${pnlStatus}). Mark $${markPrice.toFixed(2)} < Entry $${entryPrice.toFixed(2)}. Entering at favorable price.`,
+            isIgnored: false
+          };
+        }
       }
     }
 
