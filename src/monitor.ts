@@ -37,32 +37,33 @@ const processFill = async (
       console.log(`📈 ${action.action.toUpperCase()} ${action.side.toUpperCase()} ${fill.coin} | ${parseFloat(fill.sz).toFixed(4)} @ $${parseFloat(fill.px).toFixed(4)}`);
     });
 
+    const fillPrice = parseFloat(fill.px);
     let orderResponse;
 
     switch (action.action) {
       case 'open':
-        orderResponse = await (action.side === 'long' ? service.openLong(action.coin, action.size) : service.openShort(action.coin, action.size));
+        orderResponse = await (action.side === 'long' ? service.openLong(action.coin, action.size, fillPrice) : service.openShort(action.coin, action.size, fillPrice));
         break;
 
       case 'close':
-        orderResponse = await service.closePosition(action.coin);
+        orderResponse = await service.closePosition(action.coin, undefined, fillPrice);
         break;
 
       case 'add':
-        orderResponse = await (action.side === 'long' ? service.openLong(action.coin, action.size) : service.openShort(action.coin, action.size));
+        orderResponse = await (action.side === 'long' ? service.openLong(action.coin, action.size, fillPrice) : service.openShort(action.coin, action.size, fillPrice));
         break;
 
       case 'reduce':
-        orderResponse = await service.reducePosition(action.coin, action.size);
+        orderResponse = await service.reducePosition(action.coin, action.size, fillPrice);
         break;
 
       case 'reverse':
         try {
-          await service.closePosition(action.coin);
+          await service.closePosition(action.coin, undefined, fillPrice);
         } catch (error) {
           // Position doesn't exist, continue
         }
-        orderResponse = await (action.side === 'long' ? service.openLong(action.coin, action.size) : service.openShort(action.coin, action.size));
+        orderResponse = await (action.side === 'long' ? service.openLong(action.coin, action.size, fillPrice) : service.openShort(action.coin, action.size, fillPrice));
         break;
     }
 
