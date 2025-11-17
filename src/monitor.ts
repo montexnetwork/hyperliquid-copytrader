@@ -23,7 +23,7 @@ const processFill = async (
   fill: any,
   service: HyperliquidService,
   tradeHistoryService: TradeHistoryService,
-  userPositions: any[],
+  userWallet: string,
   telegramService: TelegramService
 ): Promise<FillProcessingResult> => {
   try {
@@ -42,6 +42,14 @@ const processFill = async (
 
     if (!service.canExecuteTrades()) {
       return { success: true, coin: fill.coin, action: action.action };
+    }
+
+    // Only fetch positions when needed (for close, reduce, reverse)
+    const needsPositions = ['close', 'reduce', 'reverse'].includes(action.action);
+    let userPositions: any[] = [];
+
+    if (needsPositions) {
+      userPositions = await service.getOpenPositions(userWallet);
     }
 
     let orderResponse;
@@ -220,10 +228,9 @@ const monitorTrackedWallet = async (
 
             webSocketFillsService = new WebSocketFillsService(isTestnet);
             await webSocketFillsService.initialize(trackedWallet, async (fill) => {
-              const userPositions = await service.getOpenPositions(userWallet);
               console.log(`\n[${formatTimestamp(new Date())}] 🔔 NEW TRADE DETECTED (WebSocket)`);
               console.log('━'.repeat(50));
-              await processFill(fill, service, tradeHistoryService!, userPositions, telegramService);
+              await processFill(fill, service, tradeHistoryService!, userWallet, telegramService);
               console.log('\n' + '━'.repeat(50) + '\n');
             });
             console.log('✓ Real-time WebSocket monitoring active\n');
