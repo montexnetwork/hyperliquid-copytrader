@@ -284,14 +284,15 @@ export class ActionCopyService {
       };
     }
 
-    // Calculate tracked wallet's reduction percentage
-    const trackedReductionPercentage = ((change.previousSize - change.newSize) / change.previousSize) * 100;
+    // Calculate tracked wallet's absolute reduction amount
+    const trackedReductionAmount = change.previousSize - change.newSize;
+    const trackedReductionPercentage = (trackedReductionAmount / change.previousSize) * 100;
 
-    // Get our accumulated percentage of their position
-    const accumulatedPercentage = this.accumulationTracker.getAccumulatedPercentage(change.coin);
+    // Scale the reduction by our balance ratio to see how much we should reduce
+    const scaledReductionAmount = formatScaledSize(scaleChangeAmount(trackedReductionAmount, this.balanceRatio));
 
-    // If they reduced more than we've accumulated, close 100%
-    if (trackedReductionPercentage > accumulatedPercentage) {
+    // If the scaled reduction is >= our entire position, close 100%
+    if (scaledReductionAmount >= userPosition.size) {
       // Reset accumulation
       this.accumulationTracker.reset(change.coin);
 
@@ -300,15 +301,12 @@ export class ActionCopyService {
         coin: change.coin,
         side: change.newSide,
         size: userPosition.size,
-        reason: `Tracked wallet reduced ${change.coin} by ${trackedReductionPercentage.toFixed(1)}%, but you only accumulated ${accumulatedPercentage.toFixed(1)}% of their position. Closing 100% of your position.`,
+        reason: `Tracked wallet reduced ${change.coin} by ${trackedReductionAmount.toFixed(4)} (${trackedReductionPercentage.toFixed(1)}%). Scaled reduction (${scaledReductionAmount.toFixed(4)}) >= your position (${userPosition.size.toFixed(4)}). Closing 100%.`,
         isIgnored: false
       };
     }
 
-    // Otherwise, reduce proportionally
-    const changeAmount = change.previousSize - change.newSize;
-    const scaledChangeAmount = formatScaledSize(scaleChangeAmount(changeAmount, this.balanceRatio));
-
+    // Otherwise, reduce by the scaled amount
     // Update tracked size in accumulation tracker
     this.accumulationTracker.updateTrackedSize(change.coin, change.newSize);
 
@@ -316,8 +314,8 @@ export class ActionCopyService {
       action: 'reduce',
       coin: change.coin,
       side: change.newSide,
-      size: scaledChangeAmount,
-      reason: `Tracked wallet decreased ${change.coin} ${change.newSide.toUpperCase()} by ${changeAmount.toFixed(4)} (${trackedReductionPercentage.toFixed(1)}%).`,
+      size: scaledReductionAmount,
+      reason: `Tracked wallet decreased ${change.coin} ${change.newSide.toUpperCase()} by ${trackedReductionAmount.toFixed(4)} (${trackedReductionPercentage.toFixed(1)}%). Reducing by ${scaledReductionAmount.toFixed(4)}.`,
       isIgnored: false
     };
   }
