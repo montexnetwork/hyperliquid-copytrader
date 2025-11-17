@@ -10,7 +10,7 @@ A high-performance copy trading bot for Hyperliquid DEX that automatically mirro
 - **Balance ratio scaling** - automatically scales positions based on portfolio size
 - **5-minute balance caching** - reduces API calls while maintaining accuracy
 - **Telegram notifications** for all trades and errors
-- **Real-time price caching** via WebSocket for instant market data
+- **Direct price matching** - uses tracked wallet's exact fill price for optimal execution
 - **Support for mainnet and testnet**
 - **Trade actions**: open, close, add, reduce, reverse positions
 
@@ -92,11 +92,10 @@ Press `Ctrl+C` to stop gracefully
 
 ### Service Layer
 
-The application is built with 6 core services:
+The application is built with 5 core services:
 - **HyperliquidService** - API integration, order execution, and position management
 - **WebSocketFillsService** - Real-time fill detection via WebSocket
 - **TradeHistoryService** - Trade action determination and position scaling
-- **MidsCacheService** - Real-time price caching via WebSocket
 - **MetaCacheService** - Coin metadata caching (indices, decimals)
 - **TelegramService** - Notifications and bot commands
 
@@ -106,17 +105,17 @@ Core service for interacting with Hyperliquid API.
 **Key Methods:**
 - `getOpenPositions(wallet)` - Fetch open positions
 - `getAccountBalance(wallet)` - Get balance (withdrawable, marginUsed, accountValue)
-- `openLong(coin, size)` / `openShort(coin, size)` - Place market buy/sell orders
-- `closePosition(coin)` - Close entire position
-- `reducePosition(coin, size)` - Partially close position
+- `openLong(coin, size, fillPrice)` / `openShort(coin, size, fillPrice)` - Place market buy/sell orders
+- `closePosition(coin, fillPrice)` - Close entire position
+- `reducePosition(coin, size, fillPrice)` - Partially close position
 - `formatPrice(price, coin)` - Round to exchange tick size
 - `formatSize(size, coin)` - Round to size decimals
 
 **Features:**
 - **Smart order validation** - Ensures orders meet $10 minimum, auto-adjusts size if needed
-- **Price validation without slippage** - Validates using base market price to match API
+- **Direct price matching** - Uses tracked wallet's exact fill price for optimal execution
 - **Automatic slippage** - 0.5% added to buy orders, subtracted from sell orders
-- **Real-time price caching** - Uses WebSocket mid prices (falls back to orderbook)
+- **Price validation without slippage** - Validates using base fill price to match API
 - **Tick size detection** - Automatically determines correct price precision
 - **IOC market orders** - Immediate-Or-Cancel for fast execution
 
@@ -154,20 +153,6 @@ determineAction(fill): { action, side, size, reason } | null
 - Ratio = `yourAccountValue / trackedAccountValue`
 - Updated every 5 minutes automatically
 - Ensures proportional position sizing
-
-#### MidsCacheService
-Real-time price caching via WebSocket subscription.
-
-**How it works:**
-- Subscribes to `allMids` WebSocket channel on startup
-- Updates a Map of coin → mid price in real-time
-- Used by `getMarketPrice()` for fast price lookups
-- Eliminates need for repeated L2 orderbook API calls
-
-**Lifecycle:**
-- `initialize()` - Connects WebSocket and subscribes
-- `getMid(coin)` - Returns cached price or null
-- `close()` - Unsubscribes and cleans up
 
 #### MetaCacheService
 Coin metadata caching with 1-hour auto-refresh.
@@ -208,12 +193,6 @@ Sends notifications and handles bot commands.
 - Caches processed transaction IDs to avoid duplicates
 - Zero polling overhead
 
-**Mids Cache (Real-time WebSocket):**
-- WebSocket subscription to `allMids` channel
-- Updates continuously in background
-- Zero API calls for price lookups
-- Used for market order pricing with 0.5% slippage
-
 **Meta Cache (1-hour refresh):**
 - Loads once on startup
 - Auto-refreshes after 60 minutes
@@ -229,8 +208,8 @@ Sends notifications and handles bot commands.
 **Benefits:**
 - 5-15x faster trade detection
 - Minimal API rate limiting risk
-- Near-instant trade execution (71-155ms total)
-- Real-time price and fill accuracy
+- Near-instant trade execution (50-120ms total)
+- Direct price matching from tracked wallet
 
 ## How It Works
 
@@ -245,7 +224,6 @@ Sends notifications and handles bot commands.
 
 **2. Initialize Services**
 - `HyperliquidService` connects to Hyperliquid API
-- `MidsCacheService` starts WebSocket price subscription
 - `MetaCacheService` loads coin metadata
 - `TelegramService` starts bot (if configured)
 
@@ -300,15 +278,16 @@ When the tracked wallet executes a trade:
 
 **3. Price & Validation**
 ```
-[DEBUG] STRK: Cached mid=$0.202680, slippage=1.005, adjusted=$0.203693, formatted=0.20370
-[DEBUG] BUY STRK: rawSize=24.00390000, formattedSize=24.0, orderPrice=0.20370, validationPrice=$0.202680
-[DEBUG] BUY STRK: calculatedValue=24.0 × 0.202680 = $4.8643
-[DEBUG] BUY STRK: validation ADJUSTED, finalSize=49.3, finalValue=$9.9921
+Using fill price: $0.2025
+Order price with slippage: $0.203193 (0.5% added)
+Validation against base fill price: $0.2025
+Calculated value: 24.0 × $0.2025 = $4.86
+ADJUSTED: 49.3 × $0.2025 = $9.98
 ```
 
-- Gets market price from WebSocket cache
+- Uses tracked wallet's exact fill price
 - Adds 0.5% slippage for execution
-- Validates order value using **base price** (without slippage)
+- Validates order value using **base fill price** (without slippage)
 - If below $10 minimum, rounds size **up** using Math.ceil
 
 **4. Order Execution (60-250ms)**
@@ -332,7 +311,7 @@ Price: $0.2025
 Tracked wallet increased LONG position in STRK by 1814.1000 @ $0.20.
 ```
 
-**Total time: 71-155ms** from fill detection to order placement
+**Total time: 50-120ms** from fill detection to order placement
 
 ### Balance Updates
 
@@ -407,7 +386,6 @@ Your trade: Buy 471.8 STRK (scaled)
 ⚡ Mode: Real-time WebSocket (Balance updates every 5min)
 
 ✓ Loaded 500 tick sizes from cache
-✓ Mids cache initialized via WebSocket
 ✓ Meta cache initialized with 247 coins
 ✓ Telegram notifications enabled
 
@@ -434,11 +412,6 @@ Your trade: Buy 471.8 STRK (scaled)
    OPEN LONG 235.9000 AVAX
    Tracked wallet opened new LONG position in AVAX.
 
-   [DEBUG] AVAX: Cached mid=$38.250000, slippage=1.005, adjusted=$38.441250, formatted=38.44
-   [DEBUG] BUY AVAX: rawSize=235.90000000, formattedSize=235.9, orderPrice=38.44, validationPrice=$38.250000
-   [DEBUG] BUY AVAX: calculatedValue=235.9 × 38.250000 = $9023.4750
-   [DEBUG] BUY AVAX: validation PASSED, finalSize=235.9, finalValue=$9023.4750
-
    ✓ Executed: OPENED LONG 235.9000 AVAX
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -456,15 +429,7 @@ Your trade: Buy 471.8 STRK (scaled)
    ADD LONG 24.0039 STRK
    Tracked wallet increased LONG position in STRK by 1814.1000 @ $0.20.
 
-   [DEBUG] STRK: No cached mid, fetching from orderbook
-   [DEBUG] STRK: Orderbook price=$0.202680, slippage=1.005, adjusted=$0.203693, formatted=0.20370
-   [DEBUG] BUY STRK: rawSize=24.00390000, formattedSize=24.0, orderPrice=0.20370, validationPrice=$0.202680
-   [DEBUG] BUY STRK: calculatedValue=24.0 × 0.202680 = $4.8643
-   [DEBUG] BUY STRK: validation ADJUSTED, finalSize=49.3, finalValue=$9.9921
-
-   ⚠️  Adjusted BUY order size to meet $10 minimum:
-       24.0 → 49.3 STRK
-       Order value: $4.86 → $9.99
+   ⚠️  Adjusted STRK: 24.0 → 49.3 ($4.86 → $9.99)
 
    ✓ Executed: ADDED 49.3000 STRK
 
@@ -599,7 +564,6 @@ src/
 │   ├── hyperliquid.service.ts      # API integration, order execution
 │   ├── websocket-fills.service.ts  # Real-time fill detection
 │   ├── trade-history.service.ts    # Action determination
-│   ├── mids-cache.service.ts       # Price caching (WebSocket)
 │   ├── meta-cache.service.ts       # Metadata caching
 │   └── telegram.service.ts         # Notifications
 ├── utils/               # Helper functions
