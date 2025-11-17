@@ -101,9 +101,10 @@ export class TradeHistoryService {
     }
 
     // CLOSED: Previous position existed, now it's 0
+    // Use 'reduce' instead of 'close' so it goes through safety checks
     if (prevPosition !== 0 && finalPosition === 0) {
       return {
-        action: 'close',
+        action: 'reduce',
         coin: fill.coin,
         side: prevSide,
         size: scaledSize,
