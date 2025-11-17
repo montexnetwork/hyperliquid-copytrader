@@ -26,7 +26,9 @@ export const validateAndAdjustOrderSize = (
   }
 
   const adjustedSize = minOrderValue / price;
-  const finalFormattedSize = adjustedSize.toFixed(sizeDecimals);
+  const multiplier = Math.pow(10, sizeDecimals);
+  const roundedUpSize = Math.ceil(adjustedSize * multiplier) / multiplier;
+  const finalFormattedSize = roundedUpSize.toFixed(sizeDecimals);
   const finalOrderValue = parseFloat(finalFormattedSize) * price;
 
   return {
