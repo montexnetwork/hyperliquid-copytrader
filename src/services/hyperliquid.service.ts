@@ -267,6 +267,7 @@ export class HyperliquidService {
     const mid = this.midsCache.getMid(coin);
 
     if (!mid) {
+      console.log(`   [DEBUG] ${coin}: No cached mid, fetching from orderbook`);
       const book = await this.publicClient.l2Book({ coin });
       const levels = isBuy ? book.levels[1] : book.levels[0];
       if (!levels || levels.length === 0) {
@@ -274,11 +275,17 @@ export class HyperliquidService {
       }
       const price = parseFloat(levels[0].px);
       const slippage = isBuy ? 1.005 : 0.995;
-      return await this.formatPrice(price * slippage, coin);
+      const adjustedPrice = price * slippage;
+      const formattedPrice = await this.formatPrice(adjustedPrice, coin);
+      console.log(`   [DEBUG] ${coin}: Orderbook price=$${price.toFixed(6)}, slippage=${slippage}, adjusted=$${adjustedPrice.toFixed(6)}, formatted=${formattedPrice}`);
+      return formattedPrice;
     }
 
     const slippage = isBuy ? 1.005 : 0.995;
-    return await this.formatPrice(mid * slippage, coin);
+    const adjustedPrice = mid * slippage;
+    const formattedPrice = await this.formatPrice(adjustedPrice, coin);
+    console.log(`   [DEBUG] ${coin}: Cached mid=$${mid.toFixed(6)}, slippage=${slippage}, adjusted=$${adjustedPrice.toFixed(6)}, formatted=${formattedPrice}`);
+    return formattedPrice;
   }
 
   private ensureWalletClient(): void {
@@ -295,6 +302,9 @@ export class HyperliquidService {
     const sizeDecimals = await this.getSizeDecimals(coin);
     const initialFormattedSize = await this.formatSize(size, coin);
 
+    console.log(`   [DEBUG] BUY ${coin}: rawSize=${size.toFixed(8)}, formattedSize=${initialFormattedSize}, price=${priceString}`);
+    console.log(`   [DEBUG] BUY ${coin}: calculatedValue=${parseFloat(initialFormattedSize)} × ${price} = $${(parseFloat(initialFormattedSize) * price).toFixed(4)}`);
+
     const validationResult = validateAndAdjustOrderSize(
       size,
       initialFormattedSize,
@@ -302,6 +312,8 @@ export class HyperliquidService {
       this.minOrderValue,
       sizeDecimals
     );
+
+    console.log(`   [DEBUG] BUY ${coin}: validation ${validationResult.wasAdjusted ? 'ADJUSTED' : 'PASSED'}, finalSize=${validationResult.formattedSize}, finalValue=$${validationResult.finalOrderValue.toFixed(4)}`);
 
     if (validationResult.wasAdjusted) {
       console.log(`   ⚠️  Adjusted BUY order size to meet $${this.minOrderValue} minimum:`);
@@ -330,6 +342,9 @@ export class HyperliquidService {
     const sizeDecimals = await this.getSizeDecimals(coin);
     const initialFormattedSize = await this.formatSize(size, coin);
 
+    console.log(`   [DEBUG] SELL ${coin}: rawSize=${size.toFixed(8)}, formattedSize=${initialFormattedSize}, price=${priceString}`);
+    console.log(`   [DEBUG] SELL ${coin}: calculatedValue=${parseFloat(initialFormattedSize)} × ${price} = $${(parseFloat(initialFormattedSize) * price).toFixed(4)}`);
+
     const validationResult = validateAndAdjustOrderSize(
       size,
       initialFormattedSize,
@@ -337,6 +352,8 @@ export class HyperliquidService {
       this.minOrderValue,
       sizeDecimals
     );
+
+    console.log(`   [DEBUG] SELL ${coin}: validation ${validationResult.wasAdjusted ? 'ADJUSTED' : 'PASSED'}, finalSize=${validationResult.formattedSize}, finalValue=$${validationResult.finalOrderValue.toFixed(4)}`);
 
     if (validationResult.wasAdjusted) {
       console.log(`   ⚠️  Adjusted SELL order size to meet $${this.minOrderValue} minimum:`);
