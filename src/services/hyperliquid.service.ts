@@ -10,6 +10,8 @@ import { privateKeyToAccount } from 'viem/accounts';
 import type { Position, Order, Balance } from '../models';
 import { MidsCacheService } from './mids-cache.service';
 import { MetaCacheService } from './meta-cache.service';
+import * as fs from 'fs';
+import * as path from 'path';
 
 export class HyperliquidService {
   public publicClient: PublicClient;
@@ -19,6 +21,8 @@ export class HyperliquidService {
   private midsCache: MidsCacheService;
   private metaCache: MetaCacheService;
   private initialized: boolean = false;
+  private tickSizeCache: Map<string, number> = new Map();
+  private readonly TICK_SIZE_CACHE_FILE = path.resolve(process.cwd(), 'data', 'tick-sizes.json');
 
   constructor(privateKey: string | null, walletAddress: string | null, isTestnet: boolean = false) {
     this.isTestnet = isTestnet;
@@ -67,7 +71,49 @@ export class HyperliquidService {
       this.metaCache.initialize()
     ]);
 
+    this.loadTickSizeCache();
+
     this.initialized = true;
+  }
+
+  private loadTickSizeCache(): void {
+    try {
+      if (fs.existsSync(this.TICK_SIZE_CACHE_FILE)) {
+        const data = fs.readFileSync(this.TICK_SIZE_CACHE_FILE, 'utf-8');
+        const cache = JSON.parse(data);
+
+        Object.entries(cache).forEach(([coin, tickSize]) => {
+          if (coin !== 'lastUpdated' && typeof tickSize === 'number') {
+            this.tickSizeCache.set(coin, tickSize);
+          }
+        });
+
+        console.log(`✓ Loaded ${this.tickSizeCache.size} tick sizes from cache`);
+      }
+    } catch (error) {
+      console.error('Failed to load tick size cache:', error instanceof Error ? error.message : error);
+    }
+  }
+
+  private saveTickSizeCache(): void {
+    try {
+      const dataDir = path.dirname(this.TICK_SIZE_CACHE_FILE);
+      if (!fs.existsSync(dataDir)) {
+        fs.mkdirSync(dataDir, { recursive: true });
+      }
+
+      const cache: Record<string, number | string> = {
+        lastUpdated: new Date().toISOString()
+      };
+
+      this.tickSizeCache.forEach((tickSize, coin) => {
+        cache[coin] = tickSize;
+      });
+
+      fs.writeFileSync(this.TICK_SIZE_CACHE_FILE, JSON.stringify(cache, null, 2));
+    } catch (error) {
+      console.error('Failed to save tick size cache:', error instanceof Error ? error.message : error);
+    }
   }
 
   async getOpenPositions(walletAddress: string): Promise<Position[]> {
@@ -135,43 +181,54 @@ export class HyperliquidService {
   }
 
   private async getTickSize(coin: string): Promise<number> {
+    // Check cache first
+    if (this.tickSizeCache.has(coin)) {
+      return this.tickSizeCache.get(coin)!;
+    }
+
+    // Fetch from orderbook and calculate
     const book = await this.publicClient.l2Book({ coin });
     const bids = book.levels[0];
 
-    if (!bids || bids.length < 2) {
-      return 0.01;
+    let tickSize = 0.01;
+
+    if (bids && bids.length >= 2) {
+      const price1 = parseFloat(bids[0].px);
+      const price2 = parseFloat(bids[1].px);
+      let diff = Math.abs(price1 - price2);
+
+      if (diff === 0 && bids.length >= 3) {
+        const price3 = parseFloat(bids[2].px);
+        diff = Math.abs(price1 - price3);
+      }
+
+      if (diff > 0) {
+        const isCloseTo = (value: number, target: number): boolean => {
+          return Math.abs(value - target) < target * 0.1;
+        };
+
+        if (diff >= 10 || isCloseTo(diff, 10)) tickSize = 10;
+        else if (diff >= 5 || isCloseTo(diff, 5)) tickSize = 5;
+        else if (diff >= 1 || isCloseTo(diff, 1)) tickSize = 1;
+        else if (diff >= 0.5 || isCloseTo(diff, 0.5)) tickSize = 0.5;
+        else if (diff >= 0.1 || isCloseTo(diff, 0.1)) tickSize = 0.1;
+        else if (diff >= 0.05 || isCloseTo(diff, 0.05)) tickSize = 0.05;
+        else if (diff >= 0.01 || isCloseTo(diff, 0.01)) tickSize = 0.01;
+        else if (diff >= 0.005 || isCloseTo(diff, 0.005)) tickSize = 0.005;
+        else if (diff >= 0.001 || isCloseTo(diff, 0.001)) tickSize = 0.001;
+        else if (diff >= 0.0005 || isCloseTo(diff, 0.0005)) tickSize = 0.0005;
+        else if (diff >= 0.0001 || isCloseTo(diff, 0.0001)) tickSize = 0.0001;
+        else if (diff >= 0.00005 || isCloseTo(diff, 0.00005)) tickSize = 0.00005;
+        else if (diff >= 0.00001 || isCloseTo(diff, 0.00001)) tickSize = 0.00001;
+        else tickSize = 0.00001;
+      }
     }
 
-    const price1 = parseFloat(bids[0].px);
-    const price2 = parseFloat(bids[1].px);
-    let diff = Math.abs(price1 - price2);
+    // Cache the result
+    this.tickSizeCache.set(coin, tickSize);
+    this.saveTickSizeCache();
 
-    if (diff === 0 && bids.length >= 3) {
-      const price3 = parseFloat(bids[2].px);
-      diff = Math.abs(price1 - price3);
-    }
-
-    if (diff === 0) return 0.01;
-
-    const isCloseTo = (value: number, target: number): boolean => {
-      return Math.abs(value - target) < target * 0.1;
-    };
-
-    if (diff >= 10 || isCloseTo(diff, 10)) return 10;
-    if (diff >= 5 || isCloseTo(diff, 5)) return 5;
-    if (diff >= 1 || isCloseTo(diff, 1)) return 1;
-    if (diff >= 0.5 || isCloseTo(diff, 0.5)) return 0.5;
-    if (diff >= 0.1 || isCloseTo(diff, 0.1)) return 0.1;
-    if (diff >= 0.05 || isCloseTo(diff, 0.05)) return 0.05;
-    if (diff >= 0.01 || isCloseTo(diff, 0.01)) return 0.01;
-    if (diff >= 0.005 || isCloseTo(diff, 0.005)) return 0.005;
-    if (diff >= 0.001 || isCloseTo(diff, 0.001)) return 0.001;
-    if (diff >= 0.0005 || isCloseTo(diff, 0.0005)) return 0.0005;
-    if (diff >= 0.0001 || isCloseTo(diff, 0.0001)) return 0.0001;
-    if (diff >= 0.00005 || isCloseTo(diff, 0.00005)) return 0.00005;
-    if (diff >= 0.00001 || isCloseTo(diff, 0.00001)) return 0.00001;
-
-    return 0.00001;
+    return tickSize;
   }
 
   private roundToTickSize(price: number, tickSize: number): number {
@@ -300,6 +357,7 @@ export class HyperliquidService {
   }
 
   async cleanup(): Promise<void> {
+    this.saveTickSizeCache();
     await this.midsCache.close();
     this.metaCache.clear();
     this.initialized = false;

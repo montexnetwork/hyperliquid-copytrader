@@ -8,6 +8,8 @@ A terminal-based copy trading application for Hyperliquid DEX that monitors wall
 - "Clean slate" copy trading - only tracks NEW positions after monitoring starts
 - Automatic position sizing based on account balance ratio
 - Action-based recommendations (open, close, add, reduce, reverse)
+- Telegram notifications for all position changes
+- `/status` command to check monitoring stats via Telegram
 - Cached market data for optimal performance
 - Support for both mainnet and testnet
 
@@ -35,9 +37,36 @@ PRIVATE_KEY=0x1234567890123456789012345678901234567890123456789012345678901234
 
 # Use testnet (default: false)
 IS_TESTNET=false
+
+# Telegram notifications (optional)
+TELEGRAM_BOT_TOKEN=123456789:ABCdefGHIjklMNOpqrsTUVwxyz
+TELEGRAM_CHAT_ID=123456789
 ```
 
 See `.env.example` for a template.
+
+### Telegram Setup (Optional)
+
+To receive position change notifications via Telegram:
+
+**1. Create a bot:**
+- Message [@BotFather](https://t.me/BotFather) on Telegram
+- Send `/newbot` and follow the instructions
+- Copy the bot token
+
+**2. Get your Chat ID:**
+- Message [@userinfobot](https://t.me/userinfobot) on Telegram
+- Copy the chat ID (it's a number)
+
+**3. Add to `.env`:**
+```env
+TELEGRAM_BOT_TOKEN=your_bot_token_here
+TELEGRAM_CHAT_ID=your_chat_id_here
+```
+
+**4. Available commands:**
+- `/status` - View current monitoring statistics
+- `/start` - Show help message
 
 ### Usage
 
@@ -59,6 +88,16 @@ npm run compare
 ## Architecture
 
 ### Service Layer
+
+The application is built with 8 core services:
+- **HyperliquidService** - API integration and trading
+- **MidsCacheService** - Real-time price caching
+- **MetaCacheService** - Coin metadata caching
+- **MonitoringService** - Position change detection
+- **IgnoreListService** - Pre-existing position tracking
+- **ActionCopyService** - Copy trading logic
+- **TradeExecutionService** - Order execution
+- **TelegramService** - Notifications and bot commands
 
 #### HyperliquidService
 Core service for interacting with Hyperliquid API.
@@ -187,6 +226,29 @@ executeRecommendation(recommendation: ActionRecommendation): Promise<ExecutionRe
 
 **Note:** Currently not wired up to auto-execute. Requires manual integration.
 
+#### TelegramService
+Sends notifications and handles bot commands.
+
+**Features:**
+- Real-time position change notifications
+- `/status` command for monitoring stats
+- `/start` command for help
+- Error notifications
+- Auto-updates stats after changes
+
+**Constructor:**
+```typescript
+new TelegramService(botToken: string | null, chatId: string | null)
+```
+
+**Key Methods:**
+- `sendPositionChange(change)` - Send position change notification
+- `sendMonitoringStarted(tracked, user)` - Send startup message
+- `sendError(error)` - Send error notification
+- `updateStats(stats)` - Update current monitoring statistics
+
+**Optional:** Gracefully disabled if no token/chatId configured.
+
 ### Caching Strategy
 
 **Mids Cache (Real-time):**
@@ -220,8 +282,10 @@ executeRecommendation(recommendation: ActionRecommendation): Promise<ExecutionRe
 - `HyperliquidService` connects to API
 - `MidsCacheService` starts WebSocket subscription
 - `MetaCacheService` loads coin metadata
+- `TelegramService` starts bot (if configured)
 - Logs: `✓ Mids cache initialized via WebSocket`
 - Logs: `✓ Meta cache initialized with X coins`
+- Logs: `✓ Telegram notifications enabled` (if configured)
 
 **3. Display Header**
 Shows monitoring setup:
@@ -377,6 +441,8 @@ Recommendation: Open BTC LONG 0.5
 | `USER_WALLET` | No | Your wallet address (for recommendations) | `0xabcd...ef01` |
 | `PRIVATE_KEY` | No | Your private key (for auto-execution) | `0x1234...` |
 | `IS_TESTNET` | No | Use Hyperliquid testnet | `false` |
+| `TELEGRAM_BOT_TOKEN` | No | Telegram bot token from @BotFather | `123456789:ABC...` |
+| `TELEGRAM_CHAT_ID` | No | Your Telegram chat ID from @userinfobot | `123456789` |
 
 ### CLI Flags
 
@@ -431,6 +497,7 @@ Poll Interval:  1000ms
 
 ✓ Mids cache initialized via WebSocket
 ✓ Meta cache initialized with 247 coins
+✓ Telegram notifications enabled
 
 [2024-01-15 14:30:12] 📊 Initial snapshot captured
   Tracked Positions: 3
@@ -502,6 +569,100 @@ Estimated Value: $42,500.00
 Reason: Tracked wallet reversed position (removed from ignore list)
 ```
 
+## Telegram Notifications
+
+When Telegram is configured, you'll receive real-time notifications for all position changes.
+
+### Notification Types
+
+**Position Opened:**
+```
+📈 Position OPENED
+
+Coin: AVAX
+Side: LONG
+Size: 500.0
+Entry Price: $38.25
+Value: $19,125.00
+```
+
+**Position Closed:**
+```
+📉 Position CLOSED
+
+Coin: BTC
+Side: LONG
+Size Closed: 1.5
+Exit Price: $45,230.00
+```
+
+**Position Increased:**
+```
+⬆️ Position INCREASED
+
+Coin: ETH
+Side: LONG
+Size Change: 10.0 → 15.0 (+5.0)
+Price: $2,340.50
+New Value: $35,107.50
+```
+
+**Position Decreased:**
+```
+⬇️ Position DECREASED
+
+Coin: SOL
+Side: SHORT
+Size Change: 100.0 → 75.0 (-25.0)
+Price: $95.30
+New Value: $7,147.50
+```
+
+**Position Reversed:**
+```
+🔄 Position REVERSED
+
+Coin: BTC
+Previous: LONG 1.0
+Current: SHORT 2.0
+Price: $45,100.00
+Value: $90,200.00
+```
+
+### Status Command
+
+Use `/status` in your Telegram bot to view current monitoring statistics:
+
+```
+📊 Monitoring Status
+
+Tracked Wallet: 0xd477...e7e
+Positions: 3
+Balance: $25,431.50
+
+Your Wallet: 0x742d...0bEb
+Positions: 1
+Balance: $12,000.00
+Balance Ratio: 1:0.4718
+
+Ignored Positions: 3
+  • BTC LONG
+  • ETH SHORT
+  • SOL LONG
+
+Uptime: 2h 15m
+```
+
+### Error Notifications
+
+You'll also receive notifications when errors occur:
+
+```
+❌ Error
+
+Failed to fetch positions: Network timeout
+```
+
 ## Development
 
 ### Build
@@ -527,6 +688,7 @@ src/
 │   ├── ignore-list.service.ts
 │   ├── action-copy.service.ts
 │   ├── trade-execution.service.ts
+│   ├── telegram.service.ts
 │   └── copy-trading.service.ts
 ├── utils/               # Helper functions
 │   ├── display.utils.ts
