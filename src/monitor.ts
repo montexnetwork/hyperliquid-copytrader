@@ -1,6 +1,7 @@
 import './setup';
 import { HyperliquidService } from './services/hyperliquid.service';
 import { TradeHistoryService } from './services/trade-history.service';
+import { WebSocketFillsService } from './services/websocket-fills.service';
 import { TelegramService } from './services/telegram.service';
 import { calculateBalanceRatio } from './utils/scaling.utils';
 import { loadConfig } from './config';
@@ -141,6 +142,7 @@ const monitorTrackedWallet = async (
   const startTime = Date.now();
   let balanceRatio = 1;
   let tradeHistoryService: TradeHistoryService | null = null;
+  let webSocketFillsService: WebSocketFillsService | null = null;
   let lastBalanceUpdate = 0;
   const BALANCE_UPDATE_INTERVAL = 5 * 60 * 1000;
 
@@ -149,7 +151,7 @@ const monitorTrackedWallet = async (
   if (userWallet) {
     console.log(`👤 Your Wallet: ${userWallet}`);
   }
-  console.log(`⏱️  Poll Interval: ${pollInterval}ms\n`);
+  console.log(`⚡ Mode: Real-time WebSocket (Balance updates every 5min)\n`);
 
   if (telegramService.isEnabled()) {
     await telegramService.sendMonitoringStarted(trackedWallet, userWallet);
@@ -212,46 +214,28 @@ const monitorTrackedWallet = async (
         await updateBalanceRatio();
 
         if (isFirstRun) {
-          console.log(`\n✅ Monitoring started - watching for trades...\n`);
+          console.log(`\n✅ Monitoring started - watching for trades...`);
           if (userWallet) {
             tradeHistoryService = new TradeHistoryService(service.publicClient, balanceRatio);
+
+            webSocketFillsService = new WebSocketFillsService(isTestnet);
+            await webSocketFillsService.initialize(trackedWallet, async (fill) => {
+              const userPositions = await service.getOpenPositions(userWallet);
+              console.log(`\n[${formatTimestamp(new Date())}] 🔔 NEW TRADE DETECTED (WebSocket)`);
+              console.log('━'.repeat(50));
+              await processFill(fill, service, tradeHistoryService!, userPositions, telegramService);
+              console.log('\n' + '━'.repeat(50) + '\n');
+            });
+            console.log('✓ Real-time WebSocket monitoring active\n');
           }
           isFirstRun = false;
         }
       }
 
-      let userPositions: any[] = [];
-      if (userWallet) {
-        userPositions = await service.getOpenPositions(userWallet);
-      }
-
-      if (userWallet && tradeHistoryService) {
-        // Fetch new fills/trades
-        const newFills = await tradeHistoryService.getNewFills(trackedWallet);
-
-        if (newFills.length > 0) {
-          console.log(`\n[${formatTimestamp(new Date())}] 🔔 ${newFills.length} NEW TRADE(S) DETECTED`);
-          console.log('━'.repeat(50));
-
-          // Process all fills in parallel
-          const fillPromises = newFills.map(fill =>
-            processFill(fill, service, tradeHistoryService!, userPositions, telegramService)
-          );
-
-          const results = await Promise.allSettled(fillPromises);
-
-          // Log results summary
-          const successful = results.filter(r => r.status === 'fulfilled' && r.value.success).length;
-          const failed = results.filter(r => r.status === 'rejected' || (r.status === 'fulfilled' && !r.value.success)).length;
-
-          if (failed > 0) {
-            console.log(`\n⚠️  Summary: ${successful} successful, ${failed} failed`);
-          }
-
-          console.log('\n' + '━'.repeat(50) + '\n');
-        } else {
-          process.stdout.write(`\r[${formatTimestamp(new Date())}] ✓ No new trades - monitoring...`);
-        }
+      // WebSocket handles fill detection in real-time, no need to poll for fills
+      // Just show we're monitoring if balance was updated
+      if (shouldUpdateBalance && !isFirstRun) {
+        console.log(`[${formatTimestamp(new Date())}] ✓ Balance updated - WebSocket monitoring active`);
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -270,6 +254,9 @@ const monitorTrackedWallet = async (
   process.on('SIGINT', async () => {
     console.log('\n\n🛑 Monitoring stopped by user');
     clearInterval(intervalId);
+    if (webSocketFillsService) {
+      await webSocketFillsService.close();
+    }
     await service.cleanup();
     await telegramService.stop();
     process.exit(0);
