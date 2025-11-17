@@ -171,8 +171,8 @@ const monitorTrackedWallet = async (
         ]);
 
         balanceRatio = calculateBalanceRatio(
-          parseFloat(userBalance.withdrawable),
-          parseFloat(trackedBalance.withdrawable)
+          parseFloat(userBalance.accountValue),
+          parseFloat(trackedBalance.accountValue)
         );
 
         if (isFirstRun) {
@@ -182,10 +182,10 @@ const monitorTrackedWallet = async (
 
       if (isFirstRun) {
         console.log(`[${formatTimestamp(new Date())}] 📊 Initial State`);
-        console.log(`  Tracked Balance: $${parseFloat(trackedBalance.withdrawable).toFixed(2)}`);
+        console.log(`  Tracked Account Value: $${parseFloat(trackedBalance.accountValue).toFixed(2)}`);
 
         if (userWallet && userBalance) {
-          console.log(`  Your Balance: $${parseFloat(userBalance.withdrawable).toFixed(2)}`);
+          console.log(`  Your Account Value: $${parseFloat(userBalance.accountValue).toFixed(2)}`);
           console.log(`  Balance Ratio: 1:${balanceRatio.toFixed(4)}`);
           console.log(`  Your Positions: ${userPositions.length}`);
         }
@@ -197,9 +197,9 @@ const monitorTrackedWallet = async (
             trackedWallet,
             userWallet,
             trackedPositions: 0,
-            trackedBalance: parseFloat(trackedBalance.withdrawable),
+            trackedBalance: parseFloat(trackedBalance.accountValue),
             userPositions: userPositions.length,
-            userBalance: userBalance ? parseFloat(userBalance.withdrawable) : 0,
+            userBalance: userBalance ? parseFloat(userBalance.accountValue) : 0,
             balanceRatio,
             ignoredCoins: [],
             uptime: Date.now() - startTime
@@ -241,9 +241,9 @@ const monitorTrackedWallet = async (
             trackedWallet,
             userWallet,
             trackedPositions: 0,
-            trackedBalance: parseFloat(trackedBalance.withdrawable),
+            trackedBalance: parseFloat(trackedBalance.accountValue),
             userPositions: userPositions.length,
-            userBalance: userBalance ? parseFloat(userBalance.withdrawable) : 0,
+            userBalance: userBalance ? parseFloat(userBalance.accountValue) : 0,
             balanceRatio,
             ignoredCoins: [],
             uptime: Date.now() - startTime
