@@ -11,6 +11,140 @@ const formatTimestamp = (date: Date): string => {
   return date.toLocaleTimeString('en-US', { hour12: false });
 };
 
+interface FillProcessingResult {
+  success: boolean;
+  coin: string;
+  action?: string;
+  error?: string;
+}
+
+const processFill = async (
+  fill: any,
+  service: HyperliquidService,
+  tradeHistoryService: TradeHistoryService,
+  userPositions: any[],
+  telegramService: TelegramService
+): Promise<FillProcessingResult> => {
+  try {
+    const action = tradeHistoryService.determineAction(fill);
+
+    if (!action) {
+      return { success: true, coin: fill.coin };
+    }
+
+    console.log(`\n📈 Tracked Wallet: ${action.action.toUpperCase()} ${action.side.toUpperCase()} ${fill.coin}`);
+    console.log(`   Size: ${parseFloat(fill.sz).toFixed(4)} @ $${parseFloat(fill.px).toFixed(4)}`);
+    console.log(`\n💡 YOUR ACTION:`);
+    console.log(`   ${action.action.toUpperCase()} ${action.side.toUpperCase()} ${action.size.toFixed(4)} ${fill.coin}`);
+    console.log(`   ${action.reason}`);
+
+    if (!service.canExecuteTrades()) {
+      return { success: true, coin: fill.coin, action: action.action };
+    }
+
+    const MIN_ORDER_VALUE = 10;
+    let adjustedSize = action.size;
+
+    // Check minimum order value
+    const estimatedPrice = parseFloat(fill.px);
+    const orderValue = action.size * estimatedPrice;
+
+    if (orderValue < MIN_ORDER_VALUE && action.action !== 'close') {
+      let executionPrice = estimatedPrice;
+      if (action.action === 'open' && action.side === 'long') {
+        executionPrice = estimatedPrice * 1.005;
+      } else if (action.action === 'reduce' || action.side === 'short') {
+        executionPrice = estimatedPrice * 0.995;
+      }
+
+      adjustedSize = MIN_ORDER_VALUE / executionPrice;
+      console.log(`   ⚠️  Adjusted size to meet $10 minimum: ${action.size.toFixed(4)} → ${adjustedSize.toFixed(4)}`);
+    }
+
+    let orderResponse;
+
+    switch (action.action) {
+      case 'open':
+        if (action.side === 'long') {
+          orderResponse = await service.openLong(action.coin, adjustedSize);
+        } else {
+          orderResponse = await service.openShort(action.coin, adjustedSize);
+        }
+        console.log(`   ✓ Executed: OPENED ${action.side.toUpperCase()} ${adjustedSize.toFixed(4)} ${action.coin}`);
+        break;
+
+      case 'close':
+        const posToClose = userPositions.find(p => p.coin === action.coin);
+
+        if (!posToClose) {
+          console.log(`   ⚠️  Skipping CLOSE - you don't have ${action.coin} position`);
+          return { success: true, coin: action.coin, action: 'close-skipped' };
+        }
+
+        orderResponse = await service.closePosition(action.coin);
+        console.log(`   ✓ Executed: CLOSED ${posToClose.size.toFixed(4)} ${action.coin}`);
+        break;
+
+      case 'add':
+        if (action.side === 'long') {
+          orderResponse = await service.openLong(action.coin, adjustedSize);
+        } else {
+          orderResponse = await service.openShort(action.coin, adjustedSize);
+        }
+        console.log(`   ✓ Executed: ADDED ${adjustedSize.toFixed(4)} ${action.coin}`);
+        break;
+
+      case 'reduce':
+        const currentPosition = userPositions.find(p => p.coin === action.coin);
+
+        if (!currentPosition) {
+          console.log(`   ⚠️  Skipping REDUCE - you don't have ${action.coin} position`);
+          return { success: true, coin: action.coin, action: 'reduce-skipped' };
+        }
+
+        if (adjustedSize >= currentPosition.size) {
+          console.log(`   ⚠️  Reduce amount (${adjustedSize.toFixed(4)}) >= position size (${currentPosition.size.toFixed(4)})`);
+          console.log(`   → Closing 100% instead`);
+          orderResponse = await service.closePosition(action.coin);
+          console.log(`   ✓ Executed: CLOSED ${currentPosition.size.toFixed(4)} ${action.coin}`);
+        } else {
+          orderResponse = await service.reducePosition(action.coin, adjustedSize);
+          console.log(`   ✓ Executed: REDUCED ${adjustedSize.toFixed(4)} ${action.coin}`);
+        }
+        break;
+
+      case 'reverse':
+        const oldPosition = userPositions.find(p => p.coin === action.coin);
+        if (oldPosition) {
+          await service.closePosition(action.coin);
+          console.log(`   ✓ Closed old ${oldPosition.side.toUpperCase()} position`);
+        }
+        if (action.side === 'long') {
+          orderResponse = await service.openLong(action.coin, adjustedSize);
+        } else {
+          orderResponse = await service.openShort(action.coin, adjustedSize);
+        }
+        console.log(`   ✓ Executed: OPENED new ${action.side.toUpperCase()} ${adjustedSize.toFixed(4)} ${action.coin}`);
+        break;
+    }
+
+    if (telegramService.isEnabled() && orderResponse) {
+      telegramService.sendMessage(`✅ Trade Executed\n\nCoin: ${action.coin}\nAction: ${action.action.toUpperCase()} ${action.side.toUpperCase()}\nSize: ${adjustedSize.toFixed(4)}\nPrice: $${parseFloat(fill.px).toFixed(4)}\n\n${action.reason}`).catch(() => {});
+    }
+
+    return { success: true, coin: action.coin, action: action.action };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error(`   ✗ Trade execution failed for ${fill.coin}: ${errorMessage}`);
+
+    if (telegramService.isEnabled()) {
+      telegramService.sendError(`Trade execution failed for ${fill.coin}: ${errorMessage}`).catch(() => {});
+    }
+
+    return { success: false, coin: fill.coin, error: errorMessage };
+  }
+};
+
 const monitorTrackedWallet = async (
   trackedWallet: string,
   userWallet: string | null,
@@ -99,127 +233,19 @@ const monitorTrackedWallet = async (
           console.log(`\n[${formatTimestamp(new Date())}] 🔔 ${newFills.length} NEW TRADE(S) DETECTED`);
           console.log('━'.repeat(50));
 
-          // Process each new fill
-          for (const fill of newFills) {
-            const action = tradeHistoryService.determineAction(fill);
+          // Process all fills in parallel
+          const fillPromises = newFills.map(fill =>
+            processFill(fill, service, tradeHistoryService!, userPositions, telegramService)
+          );
 
-            if (!action) continue;
+          const results = await Promise.allSettled(fillPromises);
 
-            console.log(`\n📈 Tracked Wallet: ${action.action.toUpperCase()} ${action.side.toUpperCase()} ${fill.coin}`);
-            console.log(`   Size: ${parseFloat(fill.sz).toFixed(4)} @ $${parseFloat(fill.px).toFixed(4)}`);
-            console.log(`\n💡 YOUR ACTION:`);
-            console.log(`   ${action.action.toUpperCase()} ${action.side.toUpperCase()} ${action.size.toFixed(4)} ${fill.coin}`);
-            console.log(`   ${action.reason}`);
+          // Log results summary
+          const successful = results.filter(r => r.status === 'fulfilled' && r.value.success).length;
+          const failed = results.filter(r => r.status === 'rejected' || (r.status === 'fulfilled' && !r.value.success)).length;
 
-            // Execute the trade if we can
-            if (service.canExecuteTrades()) {
-              try {
-                const MIN_ORDER_VALUE = 10;
-                let adjustedSize = action.size;
-
-                // Check minimum order value
-                const estimatedPrice = parseFloat(fill.px);
-                const orderValue = action.size * estimatedPrice;
-
-                if (orderValue < MIN_ORDER_VALUE && action.action !== 'close') {
-                  // Account for slippage
-                  let executionPrice = estimatedPrice;
-                  if (action.action === 'open' && action.side === 'long') {
-                    executionPrice = estimatedPrice * 1.005;
-                  } else if (action.action === 'reduce' || action.side === 'short') {
-                    executionPrice = estimatedPrice * 0.995;
-                  }
-
-                  adjustedSize = MIN_ORDER_VALUE / executionPrice;
-                  console.log(`   ⚠️  Adjusted size to meet $10 minimum: ${action.size.toFixed(4)} → ${adjustedSize.toFixed(4)}`);
-                }
-
-                let orderResponse;
-
-                switch (action.action) {
-                  case 'open':
-                    if (action.side === 'long') {
-                      orderResponse = await service.openLong(action.coin, adjustedSize);
-                    } else {
-                      orderResponse = await service.openShort(action.coin, adjustedSize);
-                    }
-                    console.log(`   ✓ Executed: OPENED ${action.side.toUpperCase()} ${adjustedSize.toFixed(4)} ${action.coin}`);
-                    break;
-
-                  case 'close':
-                    // Safety check: only close if we actually have the position
-                    const posToClose = userPositions.find(p => p.coin === action.coin);
-
-                    if (!posToClose) {
-                      console.log(`   ⚠️  Skipping CLOSE - you don't have ${action.coin} position`);
-                      break;
-                    }
-
-                    orderResponse = await service.closePosition(action.coin);
-                    console.log(`   ✓ Executed: CLOSED ${posToClose.size.toFixed(4)} ${action.coin}`);
-                    break;
-
-                  case 'add':
-                    if (action.side === 'long') {
-                      orderResponse = await service.openLong(action.coin, adjustedSize);
-                    } else {
-                      orderResponse = await service.openShort(action.coin, adjustedSize);
-                    }
-                    console.log(`   ✓ Executed: ADDED ${adjustedSize.toFixed(4)} ${action.coin}`);
-                    break;
-
-                  case 'reduce':
-                    // Safety check: don't reduce more than we have
-                    const currentPosition = userPositions.find(p => p.coin === action.coin);
-
-                    if (!currentPosition) {
-                      console.log(`   ⚠️  Skipping REDUCE - you don't have ${action.coin} position`);
-                      break;
-                    }
-
-                    if (adjustedSize >= currentPosition.size) {
-                      // If trying to reduce more than we have, just close 100%
-                      console.log(`   ⚠️  Reduce amount (${adjustedSize.toFixed(4)}) >= position size (${currentPosition.size.toFixed(4)})`);
-                      console.log(`   → Closing 100% instead`);
-                      orderResponse = await service.closePosition(action.coin);
-                      console.log(`   ✓ Executed: CLOSED ${currentPosition.size.toFixed(4)} ${action.coin}`);
-                    } else {
-                      orderResponse = await service.reducePosition(action.coin, adjustedSize);
-                      console.log(`   ✓ Executed: REDUCED ${adjustedSize.toFixed(4)} ${action.coin}`);
-                    }
-                    break;
-
-                  case 'reverse':
-                    // Close old position
-                    const oldPosition = userPositions.find(p => p.coin === action.coin);
-                    if (oldPosition) {
-                      await service.closePosition(action.coin);
-                      console.log(`   ✓ Closed old ${oldPosition.side.toUpperCase()} position`);
-                    }
-                    // Open new position
-                    if (action.side === 'long') {
-                      orderResponse = await service.openLong(action.coin, adjustedSize);
-                    } else {
-                      orderResponse = await service.openShort(action.coin, adjustedSize);
-                    }
-                    console.log(`   ✓ Executed: OPENED new ${action.side.toUpperCase()} ${adjustedSize.toFixed(4)} ${action.coin}`);
-                    break;
-                }
-
-                // Send Telegram notification (non-blocking)
-                if (telegramService.isEnabled() && orderResponse) {
-                  telegramService.sendMessage(`✅ Trade Executed\n\nCoin: ${action.coin}\nAction: ${action.action.toUpperCase()} ${action.side.toUpperCase()}\nSize: ${adjustedSize.toFixed(4)}\nPrice: $${parseFloat(fill.px).toFixed(4)}\n\n${action.reason}`).catch(() => {});
-                }
-
-              } catch (error) {
-                const errorMessage = error instanceof Error ? error.message : String(error);
-                console.error(`   ✗ Trade execution failed: ${errorMessage}`);
-
-                if (telegramService.isEnabled()) {
-                  telegramService.sendError(`Trade execution failed for ${action.coin}: ${errorMessage}`).catch(() => {});
-                }
-              }
-            }
+          if (failed > 0) {
+            console.log(`\n⚠️  Summary: ${successful} successful, ${failed} failed`);
           }
 
           console.log('\n' + '━'.repeat(50) + '\n');
