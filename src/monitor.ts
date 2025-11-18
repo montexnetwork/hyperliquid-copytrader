@@ -241,19 +241,61 @@ const monitorTrackedWallet = async (
             tradeHistoryService = new TradeHistoryService(service.publicClient, balanceRatio);
 
             webSocketFillsService = new WebSocketFillsService(isTestnet);
-            await webSocketFillsService.initialize(trackedWallet, async (fill) => {
-              await processFill(fill, service, tradeHistoryService!, userWallet, telegramService, Date.now(), lastTradeTimes);
-            });
-            console.log('✓ Real-time WebSocket monitoring active\n');
+            try {
+              await webSocketFillsService.initialize(trackedWallet, async (fill) => {
+                await processFill(fill, service, tradeHistoryService!, userWallet, telegramService, Date.now(), lastTradeTimes);
+              });
+              console.log('✓ Real-time WebSocket monitoring active\n');
+
+              if (telegramService.isEnabled()) {
+                await telegramService.sendMessage(`✓ WebSocket connected - monitoring ${trackedWallet}`);
+              }
+            } catch (error) {
+              const errorMessage = error instanceof Error ? error.message : String(error);
+              console.error(`✗ Failed to initialize WebSocket: ${errorMessage}`);
+
+              if (telegramService.isEnabled()) {
+                await telegramService.sendError(`Failed to initialize WebSocket: ${errorMessage}`);
+              }
+            }
           }
           isFirstRun = false;
         }
       }
 
-      // WebSocket handles fill detection in real-time, no need to poll for fills
-      // Just show we're monitoring if balance was updated
+      if (webSocketFillsService && !isFirstRun) {
+        const stats = webSocketFillsService.getConnectionStats();
+
+        if (!stats.isConnected) {
+          console.warn(`⚠️  WebSocket disconnected - attempting reconnection...`);
+
+          if (stats.reconnectAttempts >= stats.maxReconnectAttempts) {
+            const errorMsg = `WebSocket connection permanently failed after ${stats.maxReconnectAttempts} attempts. Manual restart required.`;
+            console.error(`✗ ${errorMsg}`);
+
+            if (telegramService.isEnabled()) {
+              await telegramService.sendError(errorMsg);
+            }
+          } else {
+            try {
+              await webSocketFillsService.forceReconnect();
+              console.log(`✓ WebSocket reconnected successfully`);
+
+              if (telegramService.isEnabled()) {
+                await telegramService.sendMessage(`✓ WebSocket reconnected after ${stats.reconnectAttempts} attempt(s)`);
+              }
+            } catch (error) {
+              const errorMessage = error instanceof Error ? error.message : String(error);
+              console.error(`✗ WebSocket reconnection failed: ${errorMessage}`);
+            }
+          }
+        }
+      }
+
       if (shouldUpdateBalance && !isFirstRun) {
-        console.log(`[${formatTimestamp(new Date())}] ✓ Balance updated - WebSocket monitoring active`);
+        const stats = webSocketFillsService?.getConnectionStats();
+        const wsStatus = stats?.isConnected ? '✓ WebSocket active' : '⚠️  WebSocket disconnected';
+        console.log(`[${formatTimestamp(new Date())}] ✓ Balance updated - ${wsStatus}`);
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);

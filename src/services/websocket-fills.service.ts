@@ -8,36 +8,67 @@ export class WebSocketFillsService {
   private processedTids: Set<string> = new Set();
   private onFillCallback: ((fill: any) => void) | null = null;
   private isFirstSnapshot: boolean = true;
+  private trackedWallet: string | null = null;
+  private lastConnectedAt: number | null = null;
+  private lastFillReceivedAt: number | null = null;
+  private reconnectAttempts: number = 0;
+  private readonly maxReconnectAttempts: number = 10;
+  private reconnectTimer: NodeJS.Timeout | null = null;
+  private isReconnecting: boolean = false;
 
   constructor(isTestnet: boolean = false) {
     this.isTestnet = isTestnet;
   }
 
   async initialize(trackedWallet: string, onFill: (fill: any) => void): Promise<void> {
-    if (this.eventClient) {
+    if (this.eventClient && !this.isReconnecting) {
       return;
     }
 
+    this.trackedWallet = trackedWallet;
     this.onFillCallback = onFill;
 
-    const wsUrl = this.isTestnet
-      ? 'wss://api.hyperliquid-testnet.xyz/ws'
-      : 'wss://api.hyperliquid.xyz/ws';
+    try {
+      const wsUrl = this.isTestnet
+        ? 'wss://api.hyperliquid-testnet.xyz/ws'
+        : 'wss://api.hyperliquid.xyz/ws';
 
-    this.wsTransport = new WebSocketTransport({ url: wsUrl });
-    this.eventClient = new EventClient({ transport: this.wsTransport });
+      this.wsTransport = new WebSocketTransport({ url: wsUrl });
+      this.eventClient = new EventClient({ transport: this.wsTransport });
 
-    this.subscription = await this.eventClient.userFills(
-      { user: trackedWallet as `0x${string}` },
-      (data: WsUserFills) => {
-        this.handleFills(data);
+      this.subscription = await this.eventClient.userFills(
+        { user: trackedWallet as `0x${string}` },
+        (data: WsUserFills) => {
+          this.handleFills(data);
+        }
+      );
+
+      this.lastConnectedAt = Date.now();
+      this.reconnectAttempts = 0;
+      this.isReconnecting = false;
+
+      if (this.reconnectTimer) {
+        clearTimeout(this.reconnectTimer);
+        this.reconnectTimer = null;
       }
-    );
 
-    console.log(`✓ WebSocket fills subscription initialized for ${trackedWallet}`);
+      console.log(`✓ WebSocket fills subscription initialized for ${trackedWallet}`);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error(`✗ WebSocket connection failed: ${errorMessage}`);
+
+      this.eventClient = null;
+      this.wsTransport = null;
+      this.subscription = null;
+
+      await this.scheduleReconnect();
+      throw error;
+    }
   }
 
   private handleFills(data: WsUserFills): void {
+    this.lastFillReceivedAt = Date.now();
+
     if (data.isSnapshot) {
       if (this.isFirstSnapshot) {
         console.log(`[WebSocket] Received initial snapshot with ${data.fills.length} historical fills`);
@@ -71,18 +102,91 @@ export class WebSocketFillsService {
     }
   }
 
+  private async scheduleReconnect(): Promise<void> {
+    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+      console.error(`✗ Max reconnection attempts (${this.maxReconnectAttempts}) reached. Manual intervention required.`);
+      return;
+    }
+
+    this.reconnectAttempts++;
+    const delays = [5000, 10000, 30000, 60000, 300000];
+    const delay = delays[Math.min(this.reconnectAttempts - 1, delays.length - 1)];
+
+    console.log(`⟳ Scheduling WebSocket reconnection attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts} in ${delay / 1000}s...`);
+
+    this.reconnectTimer = setTimeout(async () => {
+      await this.reconnect();
+    }, delay);
+  }
+
+  private async reconnect(): Promise<void> {
+    if (!this.trackedWallet || !this.onFillCallback) {
+      console.error(`✗ Cannot reconnect: missing tracked wallet or callback`);
+      return;
+    }
+
+    console.log(`⟳ Attempting WebSocket reconnection (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})...`);
+
+    this.isReconnecting = true;
+
+    try {
+      await this.close();
+      await this.initialize(this.trackedWallet, this.onFillCallback);
+      console.log(`✓ WebSocket reconnected successfully after ${this.reconnectAttempts} attempt(s)`);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error(`✗ Reconnection attempt ${this.reconnectAttempts} failed: ${errorMessage}`);
+    }
+  }
+
+  async forceReconnect(): Promise<void> {
+    if (!this.trackedWallet || !this.onFillCallback) {
+      throw new Error('Cannot reconnect: service not initialized');
+    }
+
+    console.log(`⟳ Force reconnecting WebSocket...`);
+    this.reconnectAttempts = 0;
+    this.isReconnecting = true;
+
+    await this.close();
+    await this.initialize(this.trackedWallet, this.onFillCallback);
+  }
+
   isConnected(): boolean {
     return this.eventClient !== null && this.subscription !== null;
   }
 
+  getConnectionStats(): {
+    isConnected: boolean;
+    lastConnectedAt: number | null;
+    lastFillReceivedAt: number | null;
+    reconnectAttempts: number;
+    maxReconnectAttempts: number;
+  } {
+    return {
+      isConnected: this.isConnected(),
+      lastConnectedAt: this.lastConnectedAt,
+      lastFillReceivedAt: this.lastFillReceivedAt,
+      reconnectAttempts: this.reconnectAttempts,
+      maxReconnectAttempts: this.maxReconnectAttempts
+    };
+  }
+
   async close(): Promise<void> {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+
     if (this.subscription) {
       this.subscription.unsubscribe();
       this.subscription = null;
     }
+
     this.eventClient = null;
     this.wsTransport = null;
     this.processedTids.clear();
     this.onFillCallback = null;
+    this.isReconnecting = false;
   }
 }
