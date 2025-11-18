@@ -370,7 +370,13 @@ export class HyperliquidService {
       throw new Error(`No open position for ${coin}`);
     }
 
-    const closeSize = size || position.size;
+    const requestedSize = size || position.size;
+    const closeSize = Math.min(requestedSize, position.size);
+
+    if (requestedSize > position.size) {
+      console.warn(`⚠️  Close size ${requestedSize} exceeds position size ${position.size} for ${coin}. Capping at position size to prevent flip.`);
+    }
+
     const isLong = position.side === 'long';
 
     if (isLong) {
