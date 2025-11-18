@@ -306,7 +306,7 @@ export class HyperliquidService {
         p: priceString,
         s: validationResult.formattedSize,
         r: reduceOnly,
-        t: { limit: { tif: 'Ioc' } }
+        t: { limit: { tif: reduceOnly ? 'FrontendMarket' : 'Ioc' } }
       }],
       grouping: 'na'
     });
@@ -347,7 +347,7 @@ export class HyperliquidService {
         p: priceString,
         s: validationResult.formattedSize,
         r: reduceOnly,
-        t: { limit: { tif: 'Ioc' } }
+        t: { limit: { tif: reduceOnly ? 'FrontendMarket' : 'Ioc' } }
       }],
       grouping: 'na'
     });
