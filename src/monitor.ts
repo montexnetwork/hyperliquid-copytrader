@@ -173,10 +173,10 @@ const monitorTrackedWallet = async (
       telegramService.updateStats({
         trackedWallet,
         userWallet,
-        trackedPositions: 0,
-        trackedBalance: parseFloat(trackedBalance.accountValue),
-        userPositions: userPositions.length,
-        userBalance: parseFloat(userBalance.accountValue),
+        trackedPositions,
+        trackedBalance,
+        userPositions,
+        userBalance,
         balanceRatio: newRatio,
         ignoredCoins: [],
         uptime: Date.now() - startTime

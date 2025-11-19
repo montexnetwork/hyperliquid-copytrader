@@ -1,15 +1,31 @@
 import TelegramBot from 'node-telegram-bot-api';
+import * as fs from 'fs';
+import * as path from 'path';
+import type { Balance, Position } from '../models';
 
 export interface MonitoringStats {
   trackedWallet: string;
   userWallet: string | null;
-  trackedPositions: number;
-  trackedBalance: number;
-  userPositions: number;
-  userBalance: number;
+  trackedPositions: Position[];
+  trackedBalance: Balance;
+  userPositions: Position[];
+  userBalance: Balance | null;
   balanceRatio: number;
   ignoredCoins: string[];
   uptime: number;
+}
+
+interface BalanceSnapshot {
+  timestamp: number;
+  date: string;
+  tracked: {
+    accountValue: number;
+    withdrawable: number;
+  };
+  user: {
+    accountValue: number;
+    withdrawable: number;
+  };
 }
 
 export class TelegramService {
@@ -64,30 +80,113 @@ export class TelegramService {
     const uptimeMinutes = Math.floor(this.stats.uptime / 60000);
     const uptimeHours = Math.floor(uptimeMinutes / 60);
     const uptimeRemainingMinutes = uptimeMinutes % 60;
+    const uptimeStr = uptimeHours > 0 ? `${uptimeHours}h ${uptimeRemainingMinutes}m` : `${uptimeMinutes}m`;
 
-    let uptimeStr: string;
-    if (uptimeHours > 0) {
-      uptimeStr = `${uptimeHours}h ${uptimeRemainingMinutes}m`;
-    } else {
-      uptimeStr = `${uptimeMinutes}m`;
+    const trackedAccountValue = parseFloat(this.stats.trackedBalance.accountValue);
+    const trackedWithdrawable = parseFloat(this.stats.trackedBalance.withdrawable);
+    const trackedPnlData = await this.calculatePnlSinceMidnight(trackedAccountValue, 'tracked');
+
+    let message = '📊 *Account Status*\n\n';
+    message += '*TRACKED ACCOUNT*\n';
+    message += `Address: \`${this.formatAddress(this.stats.trackedWallet)}\`\n`;
+    message += `Balance: $${trackedAccountValue.toFixed(2)} ($${trackedWithdrawable.toFixed(2)} withdrawable)\n`;
+    if (trackedPnlData) {
+      const sign = trackedPnlData.pnl >= 0 ? '+' : '';
+      message += `PNL Today: ${sign}$${trackedPnlData.pnl.toFixed(2)} (${sign}${trackedPnlData.percentage.toFixed(2)}%)\n`;
+    }
+    message += '\n';
+
+    if (this.stats.userWallet && this.stats.userBalance) {
+      const userAccountValue = parseFloat(this.stats.userBalance.accountValue);
+      const userWithdrawable = parseFloat(this.stats.userBalance.withdrawable);
+      const userPnlData = await this.calculatePnlSinceMidnight(userAccountValue, 'user');
+
+      message += '*YOUR ACCOUNT*\n';
+      message += `Address: \`${this.formatAddress(this.stats.userWallet)}\`\n`;
+      message += `Balance: $${userAccountValue.toFixed(2)} ($${userWithdrawable.toFixed(2)} withdrawable)\n`;
+      if (userPnlData) {
+        const sign = userPnlData.pnl >= 0 ? '+' : '';
+        message += `PNL Today: ${sign}$${userPnlData.pnl.toFixed(2)} (${sign}${userPnlData.percentage.toFixed(2)}%)\n`;
+      }
+      message += `Balance Ratio: 1:${this.stats.balanceRatio.toFixed(4)}\n\n`;
     }
 
-    const message =
-      '📊 *Monitoring Status*\n\n' +
-      `*Tracked Wallet:* \`${this.formatAddress(this.stats.trackedWallet)}\`\n` +
-      `*Positions:* ${this.stats.trackedPositions}\n` +
-      `*Balance:* $${this.stats.trackedBalance.toFixed(2)}\n\n` +
-      (this.stats.userWallet ?
-        `*Your Wallet:* \`${this.formatAddress(this.stats.userWallet)}\`\n` +
-        `*Positions:* ${this.stats.userPositions}\n` +
-        `*Balance:* $${this.stats.userBalance.toFixed(2)}\n` +
-        `*Balance Ratio:* 1:${this.stats.balanceRatio.toFixed(4)}\n\n` : '') +
-      (this.stats.ignoredCoins.length > 0 ?
-        `*Ignored Positions:* ${this.stats.ignoredCoins.length}\n` +
-        `${this.stats.ignoredCoins.map(c => `  • ${c}`).join('\n')}\n\n` : '') +
-      `*Uptime:* ${uptimeStr}`;
+    if (this.stats.userPositions.length > 0) {
+      message += `*OPEN POSITIONS (${this.stats.userPositions.length})*\n\n`;
+      for (const position of this.stats.userPositions) {
+        message += this.formatPosition(position);
+      }
+    }
+
+    if (this.stats.ignoredCoins.length > 0) {
+      message += `\n*Ignored: ${this.stats.ignoredCoins.length} positions*\n`;
+      message += this.stats.ignoredCoins.map(c => `  • ${c}`).join('\n') + '\n';
+    }
+
+    message += `\n*Uptime:* ${uptimeStr}`;
 
     await this.sendMessage(message);
+  }
+
+  private async readMidnightSnapshot(): Promise<BalanceSnapshot | null> {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const filePath = path.join(process.cwd(), 'data', `snapshots-${today}.jsonl`);
+
+      if (fs.existsSync(filePath)) {
+        const content = fs.readFileSync(filePath, 'utf-8');
+        const lines = content.trim().split('\n');
+        if (lines.length > 0 && lines[0]) {
+          return JSON.parse(lines[0]);
+        }
+      }
+
+      const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+      const yesterdayPath = path.join(process.cwd(), 'data', `snapshots-${yesterday}.jsonl`);
+
+      if (fs.existsSync(yesterdayPath)) {
+        const content = fs.readFileSync(yesterdayPath, 'utf-8');
+        const lines = content.trim().split('\n');
+        if (lines.length > 0 && lines[lines.length - 1]) {
+          return JSON.parse(lines[lines.length - 1]);
+        }
+      }
+
+      return null;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  private async calculatePnlSinceMidnight(
+    currentAccountValue: number,
+    walletType: 'tracked' | 'user'
+  ): Promise<{ pnl: number; percentage: number } | null> {
+    const midnightSnapshot = await this.readMidnightSnapshot();
+    if (!midnightSnapshot) {
+      return null;
+    }
+
+    const midnightValue = walletType === 'tracked'
+      ? midnightSnapshot.tracked.accountValue
+      : midnightSnapshot.user.accountValue;
+
+    const pnl = currentAccountValue - midnightValue;
+    const percentage = midnightValue > 0 ? (pnl / midnightValue) * 100 : 0;
+
+    return { pnl, percentage };
+  }
+
+  private formatPosition(position: Position): string {
+    const notionalValue = position.size * position.markPrice;
+    const pnlSign = position.unrealizedPnl >= 0 ? '+' : '';
+
+    let message = `*${position.coin}*\n`;
+    message += `├ ${position.side.charAt(0).toUpperCase() + position.side.slice(1)} ${position.leverage.toFixed(0)}x | $${notionalValue.toFixed(2)} notional\n`;
+    message += `├ Size: ${position.size.toFixed(4)} @ $${position.entryPrice.toFixed(2)}\n`;
+    message += `└ Mark: $${position.markPrice.toFixed(2)} | PnL: ${pnlSign}$${position.unrealizedPnl.toFixed(2)}\n\n`;
+
+    return message;
   }
 
   private formatAddress(address: string): string {
