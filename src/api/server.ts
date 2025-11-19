@@ -3,7 +3,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
+const HOST = '0.0.0.0';
 const DATA_DIR = path.join(__dirname, '../../data');
 const FRONTEND_DIR = path.join(__dirname, '../../frontend');
 
@@ -52,8 +53,8 @@ app.get('/api/snapshots', (req: Request, res: Response) => {
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`📊 Dashboard server running at http://localhost:${PORT}`);
+app.listen(PORT, HOST, () => {
+  console.log(`📊 Dashboard server running on ${HOST}:${PORT}`);
   console.log(`📁 Serving snapshots from: ${DATA_DIR}`);
-  console.log(`🌐 Open your browser to view the dashboard`);
+  console.log(`🌐 Access the dashboard at http://YOUR_SERVER_IP:${PORT}`);
 });
