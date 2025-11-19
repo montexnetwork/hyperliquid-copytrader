@@ -124,6 +124,13 @@
       color: #e1e8ed;
     }
 
+    .charts-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 20px;
+      margin-bottom: 20px;
+    }
+
     .loading {
       text-align: center;
       padding: 50px;
@@ -217,6 +224,10 @@
         font-size: 1.5em;
       }
 
+      .charts-grid {
+        grid-template-columns: 1fr;
+      }
+
       .chart-container {
         padding: 15px;
       }
@@ -297,19 +308,28 @@
       <button id="refresh-btn">Refresh Data</button>
     </div>
 
-    <div class="chart-container">
-      <div class="chart-title">Account Balance</div>
-      <div id="balance-chart"></div>
+    <div class="charts-grid">
+      <div class="chart-container">
+        <div class="chart-title">Account Balance</div>
+        <div id="balance-chart"></div>
+      </div>
+
+      <div class="chart-container">
+        <div class="chart-title">Unrealized PNL</div>
+        <div id="pnl-chart"></div>
+      </div>
     </div>
 
-    <div class="chart-container">
-      <div class="chart-title">Unrealized PNL</div>
-      <div id="pnl-chart"></div>
-    </div>
+    <div class="charts-grid">
+      <div class="chart-container">
+        <div class="chart-title">Position Sizes</div>
+        <div id="position-sizes-chart"></div>
+      </div>
 
-    <div class="chart-container">
-      <div class="chart-title">Position Sizes</div>
-      <div id="position-sizes-chart"></div>
+      <div class="chart-container">
+        <div class="chart-title">Position PNL Over Time</div>
+        <div id="position-pnl-chart"></div>
+      </div>
     </div>
 
     <div class="chart-container">
@@ -430,6 +450,7 @@
       }], commonLayout, { responsive: true });
 
       renderPositionSizes();
+      renderPositionPnl();
 
       Plotly.newPlot('risk-metrics-chart', [
         {
@@ -488,6 +509,48 @@
         yaxis: { gridcolor: '#38444d', showgrid: true, title: 'Notional Value ($)' },
         margin: { l: 50, r: 20, t: 20, b: 40 },
         legend: { x: 0, y: 1 }
+      }, { responsive: true });
+    }
+
+    function renderPositionPnl() {
+      const coinData = {};
+
+      filteredSnapshots.forEach(snapshot => {
+        const timestamp = new Date(snapshot.timestamp);
+        snapshot.wallet.positions.forEach(pos => {
+          if (!coinData[pos.coin]) {
+            coinData[pos.coin] = { x: [], y: [] };
+          }
+          coinData[pos.coin].x.push(timestamp);
+          coinData[pos.coin].y.push(pos.unrealizedPnl);
+        });
+      });
+
+      const traces = Object.entries(coinData).map(([coin, data]) => ({
+        x: data.x,
+        y: data.y,
+        name: coin,
+        type: 'scatter',
+        mode: 'lines',
+        line: { width: 2 }
+      }));
+
+      Plotly.newPlot('position-pnl-chart', traces, {
+        plot_bgcolor: '#0f1419',
+        paper_bgcolor: '#192734',
+        font: { color: '#e1e8ed' },
+        xaxis: { gridcolor: '#38444d', showgrid: true },
+        yaxis: { gridcolor: '#38444d', showgrid: true, title: 'Unrealized PNL ($)' },
+        margin: { l: 50, r: 20, t: 20, b: 40 },
+        legend: { x: 0, y: 1 },
+        shapes: [{
+          type: 'line',
+          x0: filteredSnapshots[0]?.timestamp,
+          x1: filteredSnapshots[filteredSnapshots.length - 1]?.timestamp,
+          y0: 0,
+          y1: 0,
+          line: { color: '#38444d', width: 1, dash: 'dash' }
+        }]
       }, { responsive: true });
     }
 
