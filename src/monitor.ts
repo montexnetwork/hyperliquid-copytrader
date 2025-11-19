@@ -4,6 +4,7 @@ import { TradeHistoryService } from './services/trade-history.service';
 import { WebSocketFillsService } from './services/websocket-fills.service';
 import { TelegramService } from './services/telegram.service';
 import { PositionMonitorService } from './services/position-monitor.service';
+import { SnapshotLoggerService } from './services/snapshot-logger.service';
 import { calculateBalanceRatio } from './utils/scaling.utils';
 import { loadConfig } from './config';
 
@@ -113,6 +114,7 @@ const monitorTrackedWallet = async (
   const BALANCE_UPDATE_INTERVAL = 1 * 60 * 1000;
   const lastTradeTimes = new Map<string, number>();
   const positionMonitor = new PositionMonitorService();
+  const snapshotLogger = new SnapshotLoggerService();
 
   console.log('\n🚀 Copy Trading Bot Started\n');
   console.log(`📊 Tracked Wallet: ${trackedWallet}`);
@@ -150,6 +152,16 @@ const monitorTrackedWallet = async (
     }
 
     const ratioChangePercent = oldRatio !== 0 ? ((newRatio - oldRatio) / oldRatio) * 100 : 0;
+
+    snapshotLogger.logSnapshot(
+      trackedWallet,
+      parseFloat(trackedBalance.accountValue),
+      trackedPositions,
+      userWallet,
+      parseFloat(userBalance.accountValue),
+      userPositions,
+      newRatio
+    );
 
     console.log(`\n💰 Balance Update [${formatTimestamp(new Date())}]`);
     console.log(`  Tracked Account: $${parseFloat(trackedBalance.accountValue).toFixed(2)}`);
