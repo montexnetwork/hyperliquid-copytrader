@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Trading Dashboard</title>
+  <title>Hyperscalper Dashboard</title>
   <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
   <style>
     * {
@@ -47,25 +47,6 @@
     .updating {
       color: #667eea;
       font-weight: bold;
-    }
-
-    .nav-links {
-      text-align: center;
-      margin-bottom: 20px;
-    }
-
-    .nav-links a {
-      color: #667eea;
-      text-decoration: none;
-      padding: 8px 16px;
-      border: 1px solid #667eea;
-      border-radius: 6px;
-      transition: all 0.2s;
-    }
-
-    .nav-links a:hover {
-      background: #667eea;
-      color: #fff;
     }
 
     .stats-grid {
@@ -255,13 +236,8 @@
 </head>
 <body>
   <div class="header">
-    <h1>Trading Dashboard</h1>
-    <p class="subtitle">Your wallet performance</p>
+    <h1>Hyperscalper</h1>
     <p class="last-updated" id="last-updated">Auto-refresh enabled (every 60s)</p>
-  </div>
-
-  <div class="nav-links">
-    <a href="/copy-trading">View Copy Trading Dashboard</a>
   </div>
 
   <div id="loading" class="loading">Loading data...</div>
@@ -330,6 +306,11 @@
         <div class="chart-title">Position PNL Over Time</div>
         <div id="position-pnl-chart"></div>
       </div>
+    </div>
+
+    <div class="chart-container">
+      <div class="chart-title">Drawdown Analysis</div>
+      <div id="drawdown-chart"></div>
     </div>
 
     <div class="chart-container">
@@ -451,6 +432,7 @@
 
       renderPositionSizes();
       renderPositionPnl();
+      renderDrawdown();
 
       Plotly.newPlot('risk-metrics-chart', [
         {
@@ -547,6 +529,52 @@
           type: 'line',
           x0: filteredSnapshots[0]?.timestamp,
           x1: filteredSnapshots[filteredSnapshots.length - 1]?.timestamp,
+          y0: 0,
+          y1: 0,
+          line: { color: '#38444d', width: 1, dash: 'dash' }
+        }]
+      }, { responsive: true });
+    }
+
+    function renderDrawdown() {
+      const timestamps = [];
+      const drawdowns = [];
+      let peak = 0;
+
+      filteredSnapshots.forEach(snapshot => {
+        const balance = parseFloat(snapshot.wallet.accountValue);
+        if (balance > peak) {
+          peak = balance;
+        }
+        const drawdown = peak > 0 ? ((balance - peak) / peak) * 100 : 0;
+        timestamps.push(new Date(snapshot.timestamp));
+        drawdowns.push(drawdown);
+      });
+
+      Plotly.newPlot('drawdown-chart', [{
+        x: timestamps,
+        y: drawdowns,
+        type: 'scatter',
+        mode: 'lines',
+        fill: 'tozeroy',
+        line: { color: '#e0245e', width: 2 },
+        fillcolor: 'rgba(224, 36, 94, 0.3)'
+      }], {
+        plot_bgcolor: '#0f1419',
+        paper_bgcolor: '#192734',
+        font: { color: '#e1e8ed' },
+        xaxis: { gridcolor: '#38444d', showgrid: true },
+        yaxis: {
+          gridcolor: '#38444d',
+          showgrid: true,
+          title: 'Drawdown (%)',
+          tickformat: '.2f'
+        },
+        margin: { l: 50, r: 20, t: 20, b: 40 },
+        shapes: [{
+          type: 'line',
+          x0: timestamps[0],
+          x1: timestamps[timestamps.length - 1],
           y0: 0,
           y1: 0,
           line: { color: '#38444d', width: 1, dash: 'dash' }
