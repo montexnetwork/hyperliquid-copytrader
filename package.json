@@ -6,6 +6,7 @@
   "scripts": {
     "start": "tsx src/monitor.ts",
     "compare": "tsx src/index.ts",
+    "dashboard": "tsx src/api/server.ts",
     "build": "tsc",
     "fetch-ohlc": "tsx testing/scripts/fetch-ohlc.ts",
     "backtest": "tsx testing/scripts/run-backtest.ts",
@@ -20,7 +21,9 @@
   "type": "commonjs",
   "dependencies": {
     "@nktkas/hyperliquid": "^0.16.0",
+    "@types/express": "^5.0.5",
     "dotenv": "^17.2.3",
+    "express": "^5.1.0",
     "node-telegram-bot-api": "^0.66.0",
     "viem": "^2.39.0",
     "ws": "^8.18.3"
