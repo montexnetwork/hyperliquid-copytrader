@@ -354,7 +354,7 @@
     </div>
 
     <div class="chart-container">
-      <div class="chart-title">Entry Price Difference (User vs Tracked)</div>
+      <div class="chart-title">Entry Price Difference % (User vs Tracked)</div>
       <div id="entry-diff-chart"></div>
     </div>
 
@@ -756,7 +756,8 @@
 
         allCoins.forEach(coin => {
           if (trackedPositions[coin] && userPositions[coin]) {
-            entryDiffByTime[timestamp][coin] = userPositions[coin] - trackedPositions[coin];
+            const diffPercent = ((userPositions[coin] - trackedPositions[coin]) / trackedPositions[coin]) * 100;
+            entryDiffByTime[timestamp][coin] = diffPercent;
           }
         });
       });
@@ -786,8 +787,9 @@
         ...plotLayout,
         yaxis: {
           ...plotLayout.yaxis,
-          title: 'Entry Price Difference (USD)',
-          tickformat: '$,.2f',
+          title: 'Entry Price Difference (%)',
+          tickformat: '.2f',
+          ticksuffix: '%',
           zeroline: true,
           zerolinecolor: '#38444d',
           zerolinewidth: 2
