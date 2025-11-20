@@ -32,9 +32,12 @@ const processFill = async (
   startTime: number,
   lastTradeTimes: Map<string, number>,
   tradeLogger: TradeLoggerService,
-  balanceRatio: number
+  balanceRatio: number,
+  updateLastFillTime: () => void
 ): Promise<FillProcessingResult> => {
   try {
+    updateLastFillTime();
+
     const action = tradeHistoryService.determineAction(fill);
     if (!action) return { success: true, coin: fill.coin };
     if (!service.canExecuteTrades()) return { success: true, coin: fill.coin, action: action.action };
@@ -150,6 +153,7 @@ const monitorTrackedWallet = async (
   const tradeLogger = new TradeLoggerService();
   const config = loadConfig();
   const riskMonitor = new RiskMonitorService(config);
+  let lastFillReceivedTime: number = Date.now();
 
   console.log('\n🚀 Copy Trading Bot Started\n');
   console.log(`📊 Tracked Wallet: ${trackedWallet}`);
@@ -384,7 +388,18 @@ const monitorTrackedWallet = async (
             webSocketFillsService = new WebSocketFillsService(isTestnet);
             try {
               await webSocketFillsService.initialize(trackedWallet, async (fill) => {
-                await processFill(fill, service, tradeHistoryService!, userWallet, telegramService, Date.now(), lastTradeTimes, tradeLogger, balanceRatio);
+                await processFill(
+                  fill,
+                  service,
+                  tradeHistoryService!,
+                  userWallet,
+                  telegramService,
+                  Date.now(),
+                  lastTradeTimes,
+                  tradeLogger,
+                  balanceRatio,
+                  () => { lastFillReceivedTime = Date.now(); }
+                );
               });
               console.log('✓ Real-time WebSocket monitoring active\n');
 
@@ -408,28 +423,7 @@ const monitorTrackedWallet = async (
         const stats = webSocketFillsService.getConnectionStats();
 
         if (!stats.isConnected) {
-          console.warn(`⚠️  WebSocket disconnected - attempting reconnection...`);
-
-          if (stats.reconnectAttempts >= stats.maxReconnectAttempts) {
-            const errorMsg = `WebSocket connection permanently failed after ${stats.maxReconnectAttempts} attempts. Manual restart required.`;
-            console.error(`✗ ${errorMsg}`);
-
-            if (telegramService.isEnabled()) {
-              await telegramService.sendError(errorMsg);
-            }
-          } else {
-            try {
-              await webSocketFillsService.forceReconnect();
-              console.log(`✓ WebSocket reconnected successfully`);
-
-              if (telegramService.isEnabled()) {
-                await telegramService.sendMessage(`✓ WebSocket reconnected after ${stats.reconnectAttempts} attempt(s)`);
-              }
-            } catch (error) {
-              const errorMessage = error instanceof Error ? error.message : String(error);
-              console.error(`✗ WebSocket reconnection failed: ${errorMessage}`);
-            }
-          }
+          console.warn(`⚠️  WebSocket disconnected - automatic reconnection active (attempt ${stats.reconnectAttempts})...`);
         }
       }
 
@@ -456,9 +450,37 @@ const monitorTrackedWallet = async (
 
   const intervalId = setInterval(poll, pollInterval);
 
+  // Heartbeat check: Force reconnect if no fills for 5 minutes
+  const heartbeatCheckInterval = 5 * 60 * 1000; // Check every 5 minutes
+  const staleThreshold = 5 * 60 * 1000; // 5 minutes without fills
+  const heartbeatId = setInterval(async () => {
+    if (!webSocketFillsService || !userWallet) return;
+
+    const now = Date.now();
+    const timeSinceLastFill = now - lastFillReceivedTime;
+
+    if (timeSinceLastFill > staleThreshold) {
+      console.warn(`⚠️  No fills received for ${Math.floor(timeSinceLastFill / 60000)} minutes - reconnecting WebSocket`);
+
+      try {
+        await webSocketFillsService.forceReconnect();
+        lastFillReceivedTime = Date.now(); // Reset timer after reconnect
+        console.log(`✓ WebSocket force reconnected due to inactivity`);
+
+        if (telegramService.isEnabled()) {
+          await telegramService.sendMessage(`⚠️ WebSocket reconnected after ${Math.floor(timeSinceLastFill / 60000)} min of inactivity`);
+        }
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        console.error(`✗ Heartbeat reconnection failed: ${errorMessage}`);
+      }
+    }
+  }, heartbeatCheckInterval);
+
   process.on('SIGINT', async () => {
     console.log('\n\n🛑 Monitoring stopped by user');
     clearInterval(intervalId);
+    clearInterval(heartbeatId);
     if (webSocketFillsService) {
       await webSocketFillsService.close();
     }

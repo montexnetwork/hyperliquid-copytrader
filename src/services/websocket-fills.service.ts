@@ -12,7 +12,6 @@ export class WebSocketFillsService {
   private lastConnectedAt: number | null = null;
   private lastFillReceivedAt: number | null = null;
   private reconnectAttempts: number = 0;
-  private readonly maxReconnectAttempts: number = 10;
   private reconnectTimer: NodeJS.Timeout | null = null;
   private isReconnecting: boolean = false;
 
@@ -103,16 +102,11 @@ export class WebSocketFillsService {
   }
 
   private async scheduleReconnect(): Promise<void> {
-    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      console.error(`✗ Max reconnection attempts (${this.maxReconnectAttempts}) reached. Manual intervention required.`);
-      return;
-    }
-
     this.reconnectAttempts++;
     const delays = [5000, 10000, 30000, 60000, 300000];
     const delay = delays[Math.min(this.reconnectAttempts - 1, delays.length - 1)];
 
-    console.log(`⟳ Scheduling WebSocket reconnection attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts} in ${delay / 1000}s...`);
+    console.log(`⟳ Scheduling WebSocket reconnection attempt ${this.reconnectAttempts} in ${delay / 1000}s...`);
 
     this.reconnectTimer = setTimeout(async () => {
       await this.reconnect();
@@ -125,7 +119,7 @@ export class WebSocketFillsService {
       return;
     }
 
-    console.log(`⟳ Attempting WebSocket reconnection (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})...`);
+    console.log(`⟳ Attempting WebSocket reconnection (attempt ${this.reconnectAttempts})...`);
 
     this.isReconnecting = true;
 
@@ -161,14 +155,12 @@ export class WebSocketFillsService {
     lastConnectedAt: number | null;
     lastFillReceivedAt: number | null;
     reconnectAttempts: number;
-    maxReconnectAttempts: number;
   } {
     return {
       isConnected: this.isConnected(),
       lastConnectedAt: this.lastConnectedAt,
       lastFillReceivedAt: this.lastFillReceivedAt,
-      reconnectAttempts: this.reconnectAttempts,
-      maxReconnectAttempts: this.maxReconnectAttempts
+      reconnectAttempts: this.reconnectAttempts
     };
   }
 
