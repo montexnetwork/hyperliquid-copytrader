@@ -123,9 +123,13 @@ export class WebSocketFillsService {
 
     this.isReconnecting = true;
 
+    // Save callback before close() clears it
+    const savedWallet = this.trackedWallet;
+    const savedCallback = this.onFillCallback;
+
     try {
       await this.close();
-      await this.initialize(this.trackedWallet, this.onFillCallback);
+      await this.initialize(savedWallet, savedCallback);
       console.log(`✓ WebSocket reconnected successfully after ${this.reconnectAttempts} attempt(s)`);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -142,8 +146,12 @@ export class WebSocketFillsService {
     this.reconnectAttempts = 0;
     this.isReconnecting = true;
 
+    // Save callback before close() clears it
+    const savedWallet = this.trackedWallet;
+    const savedCallback = this.onFillCallback;
+
     await this.close();
-    await this.initialize(this.trackedWallet, this.onFillCallback);
+    await this.initialize(savedWallet, savedCallback);
   }
 
   isConnected(): boolean {
