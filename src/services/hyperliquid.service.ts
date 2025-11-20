@@ -26,6 +26,8 @@ export class HyperliquidService {
   private readonly TICK_SIZE_CACHE_FILE = path.resolve(process.cwd(), 'data', 'tick-sizes.json');
   private minOrderValue: number;
   private telegramService: TelegramService | null = null;
+  private readonly MAX_RETRIES = 3;
+  private readonly RETRY_DELAY_MS = 100;
 
   constructor(privateKey: string | null, walletAddress: string | null, isTestnet: boolean = false, telegramService: TelegramService | null = null) {
     this.isTestnet = isTestnet;
@@ -286,18 +288,19 @@ export class HyperliquidService {
     }
   }
 
+  private sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
   async placeMarketBuy(coin: string, size: number, fillPrice: number, reduceOnly: boolean = false): Promise<OrderResponse> {
     this.ensureWalletClient();
     const coinIndex = this.getCoinIndex(coin);
 
-    // Use the tracked wallet's fill price with slippage
     const orderPrice = fillPrice * 1.005;
     const priceString = await this.formatPrice(orderPrice, coin);
 
     const sizeDecimals = this.getSizeDecimals(coin);
     const initialFormattedSize = this.formatSize(size, coin);
-
-    // API validates using the base price without slippage
     const validationPrice = fillPrice;
 
     const validationResult = validateAndAdjustOrderSize(
@@ -314,78 +317,98 @@ export class HyperliquidService {
       });
     }
 
-    try {
-      const orderResponse = await this.walletClient!.order({
-        orders: [{
-          a: coinIndex,
-          b: true,
-          p: priceString,
-          s: validationResult.formattedSize,
-          r: reduceOnly,
-          t: { limit: { tif: reduceOnly ? 'FrontendMarket' : 'Ioc' } }
-        }],
-        grouping: 'na'
-      });
+    let lastError: Error | null = null;
 
-      const status = orderResponse.response.data.statuses[0];
-      if (status && 'error' in status) {
-        const errorMessage = status.error;
-
-        if (errorMessage.toLowerCase().includes('could not immediately match')) {
-          console.log(`   🔄 IOC failed for ${coin}, retrying with FrontendMarket`);
-
-          return await this.walletClient!.order({
-            orders: [{
-              a: coinIndex,
-              b: true,
-              p: priceString,
-              s: validationResult.formattedSize,
-              r: reduceOnly,
-              t: { limit: { tif: 'FrontendMarket' } }
-            }],
-            grouping: 'na'
-          });
-        }
-
-        throw new Error(errorMessage);
-      }
-
-      return orderResponse;
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-
-      if (errorMessage.toLowerCase().includes('could not immediately match')) {
-        console.log(`   🔄 IOC failed for ${coin}, retrying with FrontendMarket`);
-
-        return await this.walletClient!.order({
+    for (let attempt = 1; attempt <= this.MAX_RETRIES; attempt++) {
+      try {
+        const orderResponse = await this.walletClient!.order({
           orders: [{
             a: coinIndex,
             b: true,
             p: priceString,
             s: validationResult.formattedSize,
             r: reduceOnly,
-            t: { limit: { tif: 'FrontendMarket' } }
+            t: { limit: { tif: reduceOnly ? 'FrontendMarket' : 'Ioc' } }
           }],
           grouping: 'na'
         });
-      }
 
-      throw error;
+        const status = orderResponse.response.data.statuses[0];
+        if (status && 'error' in status) {
+          const errorMessage = status.error;
+
+          if (errorMessage.toLowerCase().includes('could not immediately match')) {
+            if (attempt < this.MAX_RETRIES) {
+              console.log(`   🔄 IOC failed for ${coin}, retry ${attempt}/${this.MAX_RETRIES}`);
+              await this.sleep(this.RETRY_DELAY_MS);
+              lastError = new Error(errorMessage);
+              continue;
+            } else {
+              console.log(`   🔄 IOC failed for ${coin} after ${this.MAX_RETRIES} attempts, trying FrontendMarket`);
+              return await this.walletClient!.order({
+                orders: [{
+                  a: coinIndex,
+                  b: true,
+                  p: priceString,
+                  s: validationResult.formattedSize,
+                  r: reduceOnly,
+                  t: { limit: { tif: 'FrontendMarket' } }
+                }],
+                grouping: 'na'
+              });
+            }
+          }
+
+          throw new Error(errorMessage);
+        }
+
+        return orderResponse;
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+
+        if (errorMessage.toLowerCase().includes('could not immediately match')) {
+          if (attempt < this.MAX_RETRIES) {
+            console.log(`   🔄 IOC failed for ${coin}, retry ${attempt}/${this.MAX_RETRIES}`);
+            await this.sleep(this.RETRY_DELAY_MS);
+            lastError = error instanceof Error ? error : new Error(errorMessage);
+            continue;
+          } else {
+            console.log(`   🔄 IOC failed for ${coin} after ${this.MAX_RETRIES} attempts, trying FrontendMarket`);
+            return await this.walletClient!.order({
+              orders: [{
+                a: coinIndex,
+                b: true,
+                p: priceString,
+                s: validationResult.formattedSize,
+                r: reduceOnly,
+                t: { limit: { tif: 'FrontendMarket' } }
+              }],
+              grouping: 'na'
+            });
+          }
+        }
+
+        lastError = error instanceof Error ? error : new Error(errorMessage);
+        throw error;
+      }
     }
+
+    if (lastError && this.telegramService?.isEnabled()) {
+      this.telegramService.sendError(`BUY order failed for ${coin} after ${this.MAX_RETRIES} retries: ${lastError.message}`).catch(() => {});
+    }
+
+    throw lastError || new Error(`Order failed after ${this.MAX_RETRIES} attempts`);
   }
 
   async placeMarketSell(coin: string, size: number, fillPrice: number, reduceOnly: boolean = false): Promise<OrderResponse> {
     this.ensureWalletClient();
     const coinIndex = this.getCoinIndex(coin);
 
-    // Use the tracked wallet's fill price with slippage
     const orderPrice = fillPrice * 0.995;
     const priceString = await this.formatPrice(orderPrice, coin);
 
     const sizeDecimals = this.getSizeDecimals(coin);
     const initialFormattedSize = this.formatSize(size, coin);
-
-    // API validates using the base price without slippage
     const validationPrice = fillPrice;
 
     const validationResult = validateAndAdjustOrderSize(
@@ -402,64 +425,87 @@ export class HyperliquidService {
       });
     }
 
-    try {
-      const orderResponse = await this.walletClient!.order({
-        orders: [{
-          a: coinIndex,
-          b: false,
-          p: priceString,
-          s: validationResult.formattedSize,
-          r: reduceOnly,
-          t: { limit: { tif: reduceOnly ? 'FrontendMarket' : 'Ioc' } }
-        }],
-        grouping: 'na'
-      });
+    let lastError: Error | null = null;
 
-      const status = orderResponse.response.data.statuses[0];
-      if (status && 'error' in status) {
-        const errorMessage = status.error;
-
-        if (errorMessage.toLowerCase().includes('could not immediately match')) {
-          console.log(`   🔄 IOC failed for ${coin}, retrying with FrontendMarket`);
-
-          return await this.walletClient!.order({
-            orders: [{
-              a: coinIndex,
-              b: false,
-              p: priceString,
-              s: validationResult.formattedSize,
-              r: reduceOnly,
-              t: { limit: { tif: 'FrontendMarket' } }
-            }],
-            grouping: 'na'
-          });
-        }
-
-        throw new Error(errorMessage);
-      }
-
-      return orderResponse;
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-
-      if (errorMessage.toLowerCase().includes('could not immediately match')) {
-        console.log(`   🔄 IOC failed for ${coin}, retrying with FrontendMarket`);
-
-        return await this.walletClient!.order({
+    for (let attempt = 1; attempt <= this.MAX_RETRIES; attempt++) {
+      try {
+        const orderResponse = await this.walletClient!.order({
           orders: [{
             a: coinIndex,
             b: false,
             p: priceString,
             s: validationResult.formattedSize,
             r: reduceOnly,
-            t: { limit: { tif: 'FrontendMarket' } }
+            t: { limit: { tif: reduceOnly ? 'FrontendMarket' : 'Ioc' } }
           }],
           grouping: 'na'
         });
-      }
 
-      throw error;
+        const status = orderResponse.response.data.statuses[0];
+        if (status && 'error' in status) {
+          const errorMessage = status.error;
+
+          if (errorMessage.toLowerCase().includes('could not immediately match')) {
+            if (attempt < this.MAX_RETRIES) {
+              console.log(`   🔄 IOC failed for ${coin}, retry ${attempt}/${this.MAX_RETRIES}`);
+              await this.sleep(this.RETRY_DELAY_MS);
+              lastError = new Error(errorMessage);
+              continue;
+            } else {
+              console.log(`   🔄 IOC failed for ${coin} after ${this.MAX_RETRIES} attempts, trying FrontendMarket`);
+              return await this.walletClient!.order({
+                orders: [{
+                  a: coinIndex,
+                  b: false,
+                  p: priceString,
+                  s: validationResult.formattedSize,
+                  r: reduceOnly,
+                  t: { limit: { tif: 'FrontendMarket' } }
+                }],
+                grouping: 'na'
+              });
+            }
+          }
+
+          throw new Error(errorMessage);
+        }
+
+        return orderResponse;
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+
+        if (errorMessage.toLowerCase().includes('could not immediately match')) {
+          if (attempt < this.MAX_RETRIES) {
+            console.log(`   🔄 IOC failed for ${coin}, retry ${attempt}/${this.MAX_RETRIES}`);
+            await this.sleep(this.RETRY_DELAY_MS);
+            lastError = error instanceof Error ? error : new Error(errorMessage);
+            continue;
+          } else {
+            console.log(`   🔄 IOC failed for ${coin} after ${this.MAX_RETRIES} attempts, trying FrontendMarket`);
+            return await this.walletClient!.order({
+              orders: [{
+                a: coinIndex,
+                b: false,
+                p: priceString,
+                s: validationResult.formattedSize,
+                r: reduceOnly,
+                t: { limit: { tif: 'FrontendMarket' } }
+              }],
+              grouping: 'na'
+            });
+          }
+        }
+
+        lastError = error instanceof Error ? error : new Error(errorMessage);
+        throw error;
+      }
     }
+
+    if (lastError && this.telegramService?.isEnabled()) {
+      this.telegramService.sendError(`SELL order failed for ${coin} after ${this.MAX_RETRIES} retries: ${lastError.message}`).catch(() => {});
+    }
+
+    throw lastError || new Error(`Order failed after ${this.MAX_RETRIES} attempts`);
   }
 
   async openLong(coin: string, size: number, fillPrice: number): Promise<OrderResponse> {
