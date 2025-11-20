@@ -31,7 +31,8 @@ const processFill = async (
   telegramService: TelegramService,
   startTime: number,
   lastTradeTimes: Map<string, number>,
-  tradeLogger: TradeLoggerService
+  tradeLogger: TradeLoggerService,
+  balanceRatio: number
 ): Promise<FillProcessingResult> => {
   try {
     const action = tradeHistoryService.determineAction(fill);
@@ -79,7 +80,7 @@ const processFill = async (
       console.log(`✓ ${action.action.toUpperCase()} ${action.size.toFixed(4)} ${action.coin} in ${executionTime}ms\n`);
     });
 
-    // Log closed trades with realized PNL
+    // Log closed trades with realized PNL (scaled by balance ratio)
     if (action.action === 'close' || action.action === 'reduce' || action.action === 'reverse') {
       let orderId = 0;
       const status = orderResponse?.response?.data?.statuses?.[0];
@@ -88,6 +89,9 @@ const processFill = async (
       } else if (status && 'resting' in status) {
         orderId = status.resting.oid;
       }
+
+      const trackedPnl = parseFloat(fill.closedPnl || '0');
+      const userEstimatedPnl = trackedPnl * balanceRatio;
 
       tradeLogger.logClosedTrade({
         timestamp: Date.now(),
@@ -98,7 +102,7 @@ const processFill = async (
         price: fillPrice,
         action: action.action as 'close' | 'reduce' | 'reverse',
         orderId,
-        realizedPnl: parseFloat(fill.closedPnl || '0'),
+        realizedPnl: userEstimatedPnl,
         fee: fill.fee || '0',
         executionMs: executionTime
       });
@@ -380,7 +384,7 @@ const monitorTrackedWallet = async (
             webSocketFillsService = new WebSocketFillsService(isTestnet);
             try {
               await webSocketFillsService.initialize(trackedWallet, async (fill) => {
-                await processFill(fill, service, tradeHistoryService!, userWallet, telegramService, Date.now(), lastTradeTimes, tradeLogger);
+                await processFill(fill, service, tradeHistoryService!, userWallet, telegramService, Date.now(), lastTradeTimes, tradeLogger, balanceRatio);
               });
               console.log('✓ Real-time WebSocket monitoring active\n');
 
