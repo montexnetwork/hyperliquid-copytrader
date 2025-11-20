@@ -9,6 +9,7 @@ import {
 import { privateKeyToAccount } from 'viem/accounts';
 import type { Position, Order, Balance } from '../models';
 import { MetaCacheService } from './meta-cache.service';
+import { TelegramService } from './telegram.service';
 import { validateAndAdjustOrderSize } from '../utils/order-validation.utils';
 import { loadConfig } from '../config';
 import * as fs from 'fs';
@@ -24,11 +25,13 @@ export class HyperliquidService {
   private tickSizeCache: Map<string, number> = new Map();
   private readonly TICK_SIZE_CACHE_FILE = path.resolve(process.cwd(), 'data', 'tick-sizes.json');
   private minOrderValue: number;
+  private telegramService: TelegramService | null = null;
 
-  constructor(privateKey: string | null, walletAddress: string | null, isTestnet: boolean = false) {
+  constructor(privateKey: string | null, walletAddress: string | null, isTestnet: boolean = false, telegramService: TelegramService | null = null) {
     this.isTestnet = isTestnet;
     this.userAddress = walletAddress;
     this.minOrderValue = loadConfig().minOrderValue;
+    this.telegramService = telegramService;
 
     const httpUrl = isTestnet
       ? 'https://api.hyperliquid-testnet.xyz'
@@ -403,7 +406,13 @@ export class HyperliquidService {
   }
 
   canExecuteTrades(): boolean {
-    return this.walletClient !== null;
+    if (this.walletClient === null) {
+      return false;
+    }
+    if (this.telegramService && this.telegramService.isTradingPaused()) {
+      return false;
+    }
+    return true;
   }
 
   async cleanup(): Promise<void> {

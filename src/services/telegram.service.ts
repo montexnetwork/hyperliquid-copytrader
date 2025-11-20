@@ -33,12 +33,15 @@ export class TelegramService {
   private chatId: string | null = null;
   private enabled: boolean = false;
   private stats: MonitoringStats | null = null;
+  private tradingPaused: boolean = false;
+  private readonly STATE_FILE = path.resolve(process.cwd(), 'data', 'trading-state.json');
 
   constructor(botToken: string | null, chatId: string | null) {
     if (botToken && chatId) {
       this.bot = new TelegramBot(botToken, { polling: true });
       this.chatId = chatId;
       this.enabled = true;
+      this.loadState();
       this.setupCommands();
     }
   }
@@ -55,14 +58,27 @@ export class TelegramService {
     this.bot.onText(/\/start/, (msg) => {
       if (msg.chat.id.toString() === this.chatId) {
         const message =
-          '🤖 *CopyScalper Bot*\n\n' +
+          '🤖 *Hyperscalper Bot*\n\n' +
           'Available commands:\n' +
+          '/menu - Trading control panel\n' +
           '/status - View current monitoring status\n' +
           '/start - Show this help message\n\n' +
           'You will receive notifications for:\n' +
           '• Critical errors (order failures)\n' +
           '• Underwater positions (>10% account loss)';
         this.sendMessage(message);
+      }
+    });
+
+    this.bot.onText(/\/menu/, (msg) => {
+      if (msg.chat.id.toString() === this.chatId) {
+        this.sendControlPanel();
+      }
+    });
+
+    this.bot.on('callback_query', (query) => {
+      if (query.message?.chat.id.toString() === this.chatId) {
+        this.handleCallbackQuery(query);
       }
     });
   }
@@ -352,7 +368,100 @@ export class TelegramService {
     }
   }
 
+  private async sendControlPanel(): Promise<void> {
+    if (!this.bot || !this.chatId) return;
+
+    const status = this.tradingPaused ? '⏸️ *PAUSED*' : '▶️ *ACTIVE*';
+    const message = `*Hyperscalper Control Panel*\n\nTrading Status: ${status}`;
+
+    try {
+      await this.bot.sendMessage(this.chatId, message, {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: '▶️ Resume Trading', callback_data: 'start_trading' },
+              { text: '⏸️ Pause Trading', callback_data: 'pause_trading' }
+            ],
+            [
+              { text: '📊 Status', callback_data: 'status' }
+            ]
+          ]
+        }
+      });
+    } catch (error) {
+      console.error('Failed to send control panel:', error instanceof Error ? error.message : error);
+    }
+  }
+
+  private async handleCallbackQuery(query: any): Promise<void> {
+    if (!this.bot) return;
+
+    const action = query.data;
+
+    try {
+      switch (action) {
+        case 'pause_trading':
+          this.pauseTrading();
+          await this.sendMessage('⏸️ *Trading Paused*\n\nAll new trades are now blocked. Existing positions remain open.');
+          break;
+        case 'start_trading':
+          this.resumeTrading();
+          await this.sendMessage('▶️ *Trading Resumed*\n\nBot will now execute trades based on tracked wallet activity.');
+          break;
+        case 'status':
+          await this.sendStatus();
+          break;
+      }
+
+      await this.bot.answerCallbackQuery(query.id);
+    } catch (error) {
+      console.error('Failed to handle callback query:', error instanceof Error ? error.message : error);
+    }
+  }
+
   isEnabled(): boolean {
     return this.enabled;
+  }
+
+  isTradingPaused(): boolean {
+    return this.tradingPaused;
+  }
+
+  pauseTrading(): void {
+    this.tradingPaused = true;
+    this.saveState();
+  }
+
+  resumeTrading(): void {
+    this.tradingPaused = false;
+    this.saveState();
+  }
+
+  private loadState(): void {
+    try {
+      if (fs.existsSync(this.STATE_FILE)) {
+        const data = JSON.parse(fs.readFileSync(this.STATE_FILE, 'utf-8'));
+        this.tradingPaused = data.tradingPaused || false;
+        console.log(`✓ Trading state loaded: ${this.tradingPaused ? 'PAUSED' : 'ACTIVE'}`);
+      }
+    } catch (error) {
+      console.error('Failed to load trading state:', error instanceof Error ? error.message : error);
+    }
+  }
+
+  private saveState(): void {
+    try {
+      const dir = path.dirname(this.STATE_FILE);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      fs.writeFileSync(this.STATE_FILE, JSON.stringify({
+        tradingPaused: this.tradingPaused,
+        lastUpdated: new Date().toISOString()
+      }, null, 2));
+    } catch (error) {
+      console.error('Failed to save trading state:', error instanceof Error ? error.message : error);
+    }
   }
 }

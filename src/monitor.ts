@@ -104,7 +104,7 @@ const monitorTrackedWallet = async (
   isTestnet: boolean,
   telegramService: TelegramService
 ): Promise<void> => {
-  const service = new HyperliquidService(privateKey, userWallet, isTestnet);
+  const service = new HyperliquidService(privateKey, userWallet, isTestnet, telegramService);
   await service.initialize();
 
   const startTime = Date.now();
