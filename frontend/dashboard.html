@@ -128,6 +128,81 @@
       margin-bottom: 20px;
     }
 
+    .daily-cards-container {
+      margin-bottom: 30px;
+    }
+
+    .daily-cards-title {
+      font-size: 1.3em;
+      margin-bottom: 15px;
+      color: #e1e8ed;
+    }
+
+    .daily-cards-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 10px;
+    }
+
+    .daily-card {
+      background: #192734;
+      border: 1px solid #38444d;
+      border-radius: 8px;
+      padding: 12px;
+      transition: transform 0.2s;
+    }
+
+    .daily-card:hover {
+      transform: translateY(-2px);
+      border-color: #667eea;
+    }
+
+    .daily-card.no-data {
+      opacity: 0.5;
+    }
+
+    .daily-card-date {
+      font-size: 0.75em;
+      color: #8899a6;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 6px;
+      text-align: center;
+    }
+
+    .daily-card-pnl {
+      font-size: 1.2em;
+      font-weight: bold;
+      margin-bottom: 4px;
+      text-align: center;
+    }
+
+    .daily-card-pnl.positive {
+      color: #17bf63;
+    }
+
+    .daily-card-pnl.negative {
+      color: #e0245e;
+    }
+
+    .daily-card-percent {
+      font-size: 0.85em;
+      color: #8899a6;
+      margin-bottom: 8px;
+      text-align: center;
+    }
+
+    .daily-card-chart {
+      height: 50px;
+    }
+
+    .no-data-text {
+      text-align: center;
+      color: #657786;
+      font-size: 0.9em;
+      padding: 20px 0;
+    }
+
     .loading {
       text-align: center;
       padding: 50px;
@@ -225,6 +300,15 @@
         grid-template-columns: 1fr;
       }
 
+      .daily-cards-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 8px;
+      }
+
+      .daily-card {
+        padding: 10px;
+      }
+
       .chart-container {
         padding: 15px;
         overflow-x: auto;
@@ -266,6 +350,13 @@
   <div id="error" class="error" style="display: none;"></div>
 
   <div id="dashboard" style="display: none;">
+    <div class="daily-cards-container">
+      <div class="daily-cards-title">Last 7 Days</div>
+      <div class="daily-cards-grid" id="daily-cards-grid">
+        <!-- Daily cards will be generated here -->
+      </div>
+    </div>
+
     <div class="stats-grid">
       <div class="stat-card">
         <div class="stat-label">Balance</div>
@@ -417,6 +508,7 @@
       document.getElementById('margin-used').textContent = `$${parseFloat(latest.totalMarginUsed || 0).toFixed(2)}`;
       document.getElementById('avg-leverage').textContent = `${parseFloat(latest.averageLeverage || 0).toFixed(2)}x`;
 
+      renderDailyCards(allSnapshots);
       renderCharts();
     }
 
@@ -604,6 +696,123 @@
           line: { color: '#38444d', width: 1, dash: 'dash' }
         }]
       }, { responsive: true });
+    }
+
+    function groupSnapshotsByDay(snapshots, numDays = 7) {
+      const dailyData = [];
+      const today = new Date();
+
+      for (let i = 0; i < numDays; i++) {
+        const dayStart = new Date(today);
+        dayStart.setDate(today.getDate() - i);
+        dayStart.setHours(0, 0, 0, 0);
+
+        const dayEnd = new Date(dayStart);
+        dayEnd.setHours(23, 59, 59, 999);
+
+        const daySnapshots = snapshots.filter(s =>
+          s.timestamp >= dayStart.getTime() && s.timestamp <= dayEnd.getTime()
+        );
+
+        if (daySnapshots.length > 0) {
+          const firstSnapshot = daySnapshots[0];
+          const lastSnapshot = daySnapshots[daySnapshots.length - 1];
+
+          const startBalance = parseFloat(firstSnapshot.wallet.accountValue);
+          const endBalance = parseFloat(lastSnapshot.wallet.accountValue);
+          const pnlUsd = endBalance - startBalance;
+          const pnlPercent = startBalance > 0 ? (pnlUsd / startBalance) * 100 : 0;
+
+          dailyData.push({
+            date: dayStart,
+            dateLabel: dayStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+            startBalance,
+            endBalance,
+            pnlUsd,
+            pnlPercent,
+            snapshots: daySnapshots,
+            hasData: true
+          });
+        } else {
+          dailyData.push({
+            date: dayStart,
+            dateLabel: dayStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+            hasData: false
+          });
+        }
+      }
+
+      return dailyData.reverse(); // oldest to newest
+    }
+
+    function renderDailyCards(snapshots) {
+      const dailyData = groupSnapshotsByDay(snapshots, 7);
+      const container = document.getElementById('daily-cards-grid');
+      container.innerHTML = '';
+
+      dailyData.forEach((day, index) => {
+        const card = document.createElement('div');
+        card.className = day.hasData ? 'daily-card' : 'daily-card no-data';
+
+        if (day.hasData) {
+          const pnlClass = day.pnlUsd >= 0 ? 'positive' : 'negative';
+          const pnlSign = day.pnlUsd >= 0 ? '+' : '';
+
+          card.innerHTML = `
+            <div class="daily-card-date">${day.dateLabel}</div>
+            <div class="daily-card-pnl ${pnlClass}">
+              ${pnlSign}$${day.pnlUsd.toFixed(2)}
+            </div>
+            <div class="daily-card-percent">
+              ${pnlSign}${day.pnlPercent.toFixed(2)}%
+            </div>
+            <div class="daily-card-chart" id="daily-chart-${index}"></div>
+          `;
+
+          container.appendChild(card);
+
+          // Render mini chart
+          setTimeout(() => {
+            const timestamps = day.snapshots.map(s => new Date(s.timestamp));
+            const balances = day.snapshots.map(s => parseFloat(s.wallet.accountValue));
+
+            const miniChartLayout = {
+              plot_bgcolor: '#0f1419',
+              paper_bgcolor: 'transparent',
+              xaxis: { visible: false, showgrid: false },
+              yaxis: { visible: false, showgrid: false },
+              margin: { l: 0, r: 0, t: 0, b: 0 },
+              showlegend: false,
+              hovermode: false
+            };
+
+            const miniChartConfig = {
+              responsive: true,
+              displayModeBar: false,
+              staticPlot: true
+            };
+
+            Plotly.newPlot(`daily-chart-${index}`, [{
+              x: timestamps,
+              y: balances,
+              type: 'scatter',
+              mode: 'lines',
+              line: {
+                color: day.pnlUsd >= 0 ? '#17bf63' : '#e0245e',
+                width: 1.5
+              },
+              fill: 'tozeroy',
+              fillcolor: day.pnlUsd >= 0 ? 'rgba(23, 191, 99, 0.2)' : 'rgba(224, 36, 94, 0.2)'
+            }], miniChartLayout, miniChartConfig);
+          }, 0);
+        } else {
+          card.innerHTML = `
+            <div class="daily-card-date">${day.dateLabel}</div>
+            <div class="no-data-text">No Data</div>
+          `;
+          container.appendChild(card);
+        }
+      });
     }
 
     document.getElementById('time-range').addEventListener('change', () => {
