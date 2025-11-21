@@ -725,18 +725,7 @@
     }
 
     function renderRealizedPnlChart() {
-      let filteredTrades = allTrades;
-
-      if (selectedDay !== null) {
-        const dayStart = new Date(selectedDay);
-        dayStart.setHours(0, 0, 0, 0);
-        const dayEnd = new Date(selectedDay);
-        dayEnd.setHours(23, 59, 59, 999);
-
-        filteredTrades = allTrades.filter(t =>
-          t.timestamp >= dayStart.getTime() && t.timestamp <= dayEnd.getTime()
-        );
-      }
+      const filteredTrades = allTrades;
 
       if (filteredTrades.length === 0) {
         Plotly.newPlot('realized-pnl-chart', [], {
