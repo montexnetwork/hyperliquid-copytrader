@@ -706,7 +706,8 @@
             backgroundColor: 'rgba(102, 126, 234, 0.1)',
             fill: true,
             borderWidth: 3,
-            tension: 0.1
+            tension: 0.1,
+            pointRadius: 0
           }]
         }
       });
@@ -737,7 +738,8 @@
             backgroundColor: 'rgba(23, 191, 99, 0.1)',
             fill: true,
             borderWidth: 3,
-            tension: 0.1
+            tension: 0.1,
+            pointRadius: 0
           }]
         }
       });
@@ -772,7 +774,8 @@
             backgroundColor: 'rgba(102, 126, 234, 0.3)',
             fill: true,
             borderWidth: 3,
-            tension: 0.1
+            tension: 0.1,
+            pointRadius: 0
           }]
         }
       });
@@ -803,7 +806,8 @@
             backgroundColor: 'rgba(23, 191, 99, 0.3)',
             fill: true,
             borderWidth: 3,
-            tension: 0.1
+            tension: 0.1,
+            pointRadius: 0
           }]
         }
       });
@@ -841,7 +845,8 @@
         backgroundColor: getSymbolColor(coin) + '20',
         borderWidth: 2,
         tension: 0.1,
-        fill: false
+        fill: false,
+        pointRadius: 0
       }));
 
       if (chartInstances['tracked-positions-chart']) chartInstances['tracked-positions-chart'].destroy();
@@ -871,7 +876,8 @@
         backgroundColor: getSymbolColor(coin) + '20',
         borderWidth: 2,
         tension: 0.1,
-        fill: false
+        fill: false,
+        pointRadius: 0
       }));
 
       if (chartInstances['user-positions-chart']) chartInstances['user-positions-chart'].destroy();
@@ -925,7 +931,8 @@
               backgroundColor: 'rgba(102, 126, 234, 0.3)',
               fill: true,
               borderWidth: 2,
-              tension: 0.1
+              tension: 0.1,
+              pointRadius: 0
             },
             {
               label: 'User Wallet Drawdown',
@@ -934,7 +941,8 @@
               backgroundColor: 'rgba(23, 191, 99, 0.3)',
               fill: true,
               borderWidth: 2,
-              tension: 0.1
+              tension: 0.1,
+              pointRadius: 0
             }
           ]
         }
@@ -995,8 +1003,7 @@
         borderWidth: 2,
         tension: 0.1,
         fill: false,
-        pointRadius: 4,
-        pointHoverRadius: 6
+        pointRadius: 0
       }));
 
       if (chartInstances['entry-diff-chart']) chartInstances['entry-diff-chart'].destroy();
@@ -1039,7 +1046,8 @@
               backgroundColor: 'rgba(102, 126, 234, 0.1)',
               borderWidth: 2,
               yAxisID: 'y',
-              tension: 0.1
+              tension: 0.1,
+              pointRadius: 0
             },
             {
               label: 'User Avg Leverage',
@@ -1048,7 +1056,8 @@
               backgroundColor: 'rgba(23, 191, 99, 0.1)',
               borderWidth: 2,
               yAxisID: 'y',
-              tension: 0.1
+              tension: 0.1,
+              pointRadius: 0
             },
             {
               label: 'Tracked Margin Ratio',
@@ -1058,7 +1067,8 @@
               borderWidth: 2,
               borderDash: [5, 5],
               yAxisID: 'y2',
-              tension: 0.1
+              tension: 0.1,
+              pointRadius: 0
             },
             {
               label: 'User Margin Ratio',
@@ -1068,7 +1078,8 @@
               borderWidth: 2,
               borderDash: [5, 5],
               yAxisID: 'y2',
-              tension: 0.1
+              tension: 0.1,
+              pointRadius: 0
             }
           ]
         }

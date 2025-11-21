@@ -726,7 +726,8 @@
             backgroundColor: 'rgba(23, 191, 99, 0.1)',
             fill: true,
             borderWidth: 2,
-            tension: 0.1
+            tension: 0.1,
+            pointRadius: 0
           }]
         }
       });
@@ -745,7 +746,8 @@
             backgroundColor: 'rgba(102, 126, 234, 0.1)',
             fill: true,
             borderWidth: 2,
-            tension: 0.1
+            tension: 0.1,
+            pointRadius: 0
           }]
         }
       });
@@ -773,7 +775,8 @@
               backgroundColor: 'rgba(224, 36, 94, 0.1)',
               borderWidth: 2,
               yAxisID: 'y',
-              tension: 0.1
+              tension: 0.1,
+              pointRadius: 0
             },
             {
               label: 'Avg Leverage',
@@ -782,7 +785,8 @@
               backgroundColor: 'rgba(255, 173, 31, 0.1)',
               borderWidth: 2,
               yAxisID: 'y2',
-              tension: 0.1
+              tension: 0.1,
+              pointRadius: 0
             }
           ]
         }
@@ -810,7 +814,8 @@
         backgroundColor: getSymbolColor(coin) + '20',
         borderWidth: 2,
         tension: 0.1,
-        fill: false
+        fill: false,
+        pointRadius: 0
       }));
 
       if (chartInstances['position-sizes-chart']) chartInstances['position-sizes-chart'].destroy();
@@ -845,7 +850,8 @@
         backgroundColor: getSymbolColor(coin) + '20',
         borderWidth: 2,
         tension: 0.1,
-        fill: false
+        fill: false,
+        pointRadius: 0
       }));
 
       if (chartInstances['position-pnl-chart']) chartInstances['position-pnl-chart'].destroy();
@@ -898,7 +904,8 @@
             backgroundColor: 'rgba(224, 36, 94, 0.3)',
             fill: true,
             borderWidth: 2,
-            tension: 0.1
+            tension: 0.1,
+            pointRadius: 0
           }]
         }
       });
@@ -970,8 +977,7 @@
         borderWidth: 2,
         tension: 0.1,
         fill: false,
-        pointRadius: 4,
-        pointHoverRadius: 6
+        pointRadius: 0
       }));
 
       if (chartInstances['realized-pnl-chart']) chartInstances['realized-pnl-chart'].destroy();
