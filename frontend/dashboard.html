@@ -453,6 +453,10 @@
 
     <div class="stats-grid">
       <div class="stat-card">
+        <div class="stat-label">Realized Balance</div>
+        <div class="stat-value" id="balance-without-pnl">$0</div>
+      </div>
+      <div class="stat-card">
         <div class="stat-label">Balance</div>
         <div class="stat-value" id="balance">$0</div>
       </div>
@@ -690,6 +694,10 @@
       const oldest = filteredSnapshots[0].wallet;
 
       document.getElementById('balance').textContent = `$${parseFloat(latest.accountValue).toFixed(2)}`;
+
+      const balanceWithoutPnl = parseFloat(latest.accountValue) - parseFloat(latest.totalUnrealizedPnl || 0);
+      document.getElementById('balance-without-pnl').textContent = `$${balanceWithoutPnl.toFixed(2)}`;
+
       document.getElementById('total-pnl').textContent = `$${parseFloat(latest.totalUnrealizedPnl || 0).toFixed(2)}`;
       document.getElementById('total-pnl').className = `stat-value ${(latest.totalUnrealizedPnl || 0) >= 0 ? 'positive' : 'negative'}`;
 

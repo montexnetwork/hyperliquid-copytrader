@@ -362,9 +362,21 @@
     <div class="stats-grid">
       <div class="stat-card">
         <div class="stat-label">
+          <span class="wallet-indicator tracked-wallet"></span>Tracked Realized Balance
+        </div>
+        <div class="stat-value" id="tracked-balance-without-pnl">$0</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">
           <span class="wallet-indicator tracked-wallet"></span>Tracked Balance
         </div>
         <div class="stat-value" id="tracked-balance">$0</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">
+          <span class="wallet-indicator user-wallet"></span>User Realized Balance
+        </div>
+        <div class="stat-value" id="user-balance-without-pnl">$0</div>
       </div>
       <div class="stat-card">
         <div class="stat-label">
@@ -625,6 +637,12 @@
 
       document.getElementById('tracked-balance').textContent = `$${latest.tracked.accountValue.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
       document.getElementById('user-balance').textContent = `$${latest.user.accountValue.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+
+      const trackedBalanceWithoutPnl = latest.tracked.accountValue - (latest.tracked.totalUnrealizedPnl || 0);
+      const userBalanceWithoutPnl = latest.user.accountValue - (latest.user.totalUnrealizedPnl || 0);
+      document.getElementById('tracked-balance-without-pnl').textContent = `$${trackedBalanceWithoutPnl.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+      document.getElementById('user-balance-without-pnl').textContent = `$${userBalanceWithoutPnl.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+
       document.getElementById('balance-ratio').textContent = latest.balanceRatio.toFixed(4);
 
       const trackedPnl = latest.tracked.totalUnrealizedPnl;
