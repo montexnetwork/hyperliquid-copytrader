@@ -28,6 +28,9 @@ export class HyperliquidService {
   private telegramService: TelegramService | null = null;
   private readonly MAX_RETRIES = 3;
   private readonly RETRY_DELAY_MS = 100;
+  private readonly BASE_SLIPPAGE_PERCENT = 0.5;
+  private readonly SLIPPAGE_INCREMENT = 0.5;
+  private readonly MAX_SLIPPAGE_PERCENT = 3;
 
   constructor(privateKey: string | null, walletAddress: string | null, isTestnet: boolean = false, telegramService: TelegramService | null = null) {
     this.isTestnet = isTestnet;
@@ -296,9 +299,6 @@ export class HyperliquidService {
     this.ensureWalletClient();
     const coinIndex = this.getCoinIndex(coin);
 
-    const orderPrice = fillPrice * 1.005;
-    const priceString = await this.formatPrice(orderPrice, coin);
-
     const sizeDecimals = this.getSizeDecimals(coin);
     const initialFormattedSize = this.formatSize(size, coin);
     const validationPrice = fillPrice;
@@ -320,6 +320,11 @@ export class HyperliquidService {
     let lastError: Error | null = null;
 
     for (let attempt = 1; attempt <= this.MAX_RETRIES; attempt++) {
+      // Calculate progressive slippage for each attempt
+      const slippagePercent = this.BASE_SLIPPAGE_PERCENT + (this.SLIPPAGE_INCREMENT * (attempt - 1));
+      const orderPrice = fillPrice * (1 + slippagePercent / 100);
+      const priceString = await this.formatPrice(orderPrice, coin);
+
       try {
         const orderResponse = await this.walletClient!.order({
           orders: [{
@@ -339,17 +344,20 @@ export class HyperliquidService {
 
           if (errorMessage.toLowerCase().includes('could not immediately match')) {
             if (attempt < this.MAX_RETRIES) {
-              console.log(`   🔄 IOC failed for ${coin}, retry ${attempt}/${this.MAX_RETRIES}`);
+              console.log(`   🔄 IOC failed for ${coin}, retry ${attempt}/${this.MAX_RETRIES} (slippage: ${slippagePercent}%)`);
               await this.sleep(this.RETRY_DELAY_MS);
               lastError = new Error(errorMessage);
               continue;
             } else {
-              console.log(`   🔄 IOC failed for ${coin} after ${this.MAX_RETRIES} attempts, trying FrontendMarket`);
+              // Final attempt with max slippage
+              const maxSlippagePrice = fillPrice * (1 + this.MAX_SLIPPAGE_PERCENT / 100);
+              const maxSlippagePriceString = await this.formatPrice(maxSlippagePrice, coin);
+              console.log(`   🔄 IOC failed for ${coin} after ${this.MAX_RETRIES} attempts, trying FrontendMarket (slippage: ${this.MAX_SLIPPAGE_PERCENT}%)`);
               return await this.walletClient!.order({
                 orders: [{
                   a: coinIndex,
                   b: true,
-                  p: priceString,
+                  p: maxSlippagePriceString,
                   s: validationResult.formattedSize,
                   r: reduceOnly,
                   t: { limit: { tif: 'FrontendMarket' } }
@@ -368,17 +376,20 @@ export class HyperliquidService {
 
         if (errorMessage.toLowerCase().includes('could not immediately match')) {
           if (attempt < this.MAX_RETRIES) {
-            console.log(`   🔄 IOC failed for ${coin}, retry ${attempt}/${this.MAX_RETRIES}`);
+            console.log(`   🔄 IOC failed for ${coin}, retry ${attempt}/${this.MAX_RETRIES} (slippage: ${slippagePercent}%)`);
             await this.sleep(this.RETRY_DELAY_MS);
             lastError = error instanceof Error ? error : new Error(errorMessage);
             continue;
           } else {
-            console.log(`   🔄 IOC failed for ${coin} after ${this.MAX_RETRIES} attempts, trying FrontendMarket`);
+            // Final attempt with max slippage
+            const maxSlippagePrice = fillPrice * (1 + this.MAX_SLIPPAGE_PERCENT / 100);
+            const maxSlippagePriceString = await this.formatPrice(maxSlippagePrice, coin);
+            console.log(`   🔄 IOC failed for ${coin} after ${this.MAX_RETRIES} attempts, trying FrontendMarket (slippage: ${this.MAX_SLIPPAGE_PERCENT}%)`);
             return await this.walletClient!.order({
               orders: [{
                 a: coinIndex,
                 b: true,
-                p: priceString,
+                p: maxSlippagePriceString,
                 s: validationResult.formattedSize,
                 r: reduceOnly,
                 t: { limit: { tif: 'FrontendMarket' } }
@@ -404,9 +415,6 @@ export class HyperliquidService {
     this.ensureWalletClient();
     const coinIndex = this.getCoinIndex(coin);
 
-    const orderPrice = fillPrice * 0.995;
-    const priceString = await this.formatPrice(orderPrice, coin);
-
     const sizeDecimals = this.getSizeDecimals(coin);
     const initialFormattedSize = this.formatSize(size, coin);
     const validationPrice = fillPrice;
@@ -428,6 +436,11 @@ export class HyperliquidService {
     let lastError: Error | null = null;
 
     for (let attempt = 1; attempt <= this.MAX_RETRIES; attempt++) {
+      // Calculate progressive slippage for each attempt (negative for sells)
+      const slippagePercent = this.BASE_SLIPPAGE_PERCENT + (this.SLIPPAGE_INCREMENT * (attempt - 1));
+      const orderPrice = fillPrice * (1 - slippagePercent / 100);
+      const priceString = await this.formatPrice(orderPrice, coin);
+
       try {
         const orderResponse = await this.walletClient!.order({
           orders: [{
@@ -447,17 +460,20 @@ export class HyperliquidService {
 
           if (errorMessage.toLowerCase().includes('could not immediately match')) {
             if (attempt < this.MAX_RETRIES) {
-              console.log(`   🔄 IOC failed for ${coin}, retry ${attempt}/${this.MAX_RETRIES}`);
+              console.log(`   🔄 IOC failed for ${coin}, retry ${attempt}/${this.MAX_RETRIES} (slippage: ${slippagePercent}%)`);
               await this.sleep(this.RETRY_DELAY_MS);
               lastError = new Error(errorMessage);
               continue;
             } else {
-              console.log(`   🔄 IOC failed for ${coin} after ${this.MAX_RETRIES} attempts, trying FrontendMarket`);
+              // Final attempt with max slippage
+              const maxSlippagePrice = fillPrice * (1 - this.MAX_SLIPPAGE_PERCENT / 100);
+              const maxSlippagePriceString = await this.formatPrice(maxSlippagePrice, coin);
+              console.log(`   🔄 IOC failed for ${coin} after ${this.MAX_RETRIES} attempts, trying FrontendMarket (slippage: ${this.MAX_SLIPPAGE_PERCENT}%)`);
               return await this.walletClient!.order({
                 orders: [{
                   a: coinIndex,
                   b: false,
-                  p: priceString,
+                  p: maxSlippagePriceString,
                   s: validationResult.formattedSize,
                   r: reduceOnly,
                   t: { limit: { tif: 'FrontendMarket' } }
@@ -476,17 +492,20 @@ export class HyperliquidService {
 
         if (errorMessage.toLowerCase().includes('could not immediately match')) {
           if (attempt < this.MAX_RETRIES) {
-            console.log(`   🔄 IOC failed for ${coin}, retry ${attempt}/${this.MAX_RETRIES}`);
+            console.log(`   🔄 IOC failed for ${coin}, retry ${attempt}/${this.MAX_RETRIES} (slippage: ${slippagePercent}%)`);
             await this.sleep(this.RETRY_DELAY_MS);
             lastError = error instanceof Error ? error : new Error(errorMessage);
             continue;
           } else {
-            console.log(`   🔄 IOC failed for ${coin} after ${this.MAX_RETRIES} attempts, trying FrontendMarket`);
+            // Final attempt with max slippage
+            const maxSlippagePrice = fillPrice * (1 - this.MAX_SLIPPAGE_PERCENT / 100);
+            const maxSlippagePriceString = await this.formatPrice(maxSlippagePrice, coin);
+            console.log(`   🔄 IOC failed for ${coin} after ${this.MAX_RETRIES} attempts, trying FrontendMarket (slippage: ${this.MAX_SLIPPAGE_PERCENT}%)`);
             return await this.walletClient!.order({
               orders: [{
                 a: coinIndex,
                 b: false,
-                p: priceString,
+                p: maxSlippagePriceString,
                 s: validationResult.formattedSize,
                 r: reduceOnly,
                 t: { limit: { tif: 'FrontendMarket' } }
