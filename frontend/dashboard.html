@@ -802,24 +802,25 @@
         });
       });
 
-      const traces = Object.entries(coinData).map(([coin, data]) => ({
-        x: data.x,
-        y: data.y,
-        name: coin,
-        type: 'scatter',
-        mode: 'lines',
-        line: { width: 2 }
+      const datasets = Object.entries(coinData).map(([coin, data]) => ({
+        label: coin,
+        data: data.x.map((x, i) => ({ x, y: data.y[i] })),
+        borderColor: getSymbolColor(coin),
+        backgroundColor: getSymbolColor(coin) + '20',
+        borderWidth: 2,
+        tension: 0.1,
+        fill: false
       }));
 
-      Plotly.newPlot('position-sizes-chart', traces, {
-        plot_bgcolor: '#0f1419',
-        paper_bgcolor: '#192734',
-        font: { color: '#e1e8ed' },
-        xaxis: { gridcolor: '#38444d', showgrid: true },
-        yaxis: { gridcolor: '#38444d', showgrid: true, title: 'Notional Value ($)' },
-        margin: { l: 50, r: 20, t: 20, b: 40 },
-        legend: { x: 0, y: 1 }
-      }, { responsive: true });
+      if (chartInstances['position-sizes-chart']) chartInstances['position-sizes-chart'].destroy();
+      const ctx = document.getElementById('position-sizes-chart').getContext('2d');
+      chartInstances['position-sizes-chart'] = new Chart(ctx, {
+        ...getChartConfig('line', {
+          legend: { position: 'right' },
+          yScale: { title: { display: true, text: 'Notional Value ($)', color: '#8899a6' } }
+        }),
+        data: { datasets }
+      });
     }
 
     function renderPositionPnl() {
@@ -836,32 +837,25 @@
         });
       });
 
-      const traces = Object.entries(coinData).map(([coin, data]) => ({
-        x: data.x,
-        y: data.y,
-        name: coin,
-        type: 'scatter',
-        mode: 'lines',
-        line: { width: 2 }
+      const datasets = Object.entries(coinData).map(([coin, data]) => ({
+        label: coin,
+        data: data.x.map((x, i) => ({ x, y: data.y[i] })),
+        borderColor: getSymbolColor(coin),
+        backgroundColor: getSymbolColor(coin) + '20',
+        borderWidth: 2,
+        tension: 0.1,
+        fill: false
       }));
 
-      Plotly.newPlot('position-pnl-chart', traces, {
-        plot_bgcolor: '#0f1419',
-        paper_bgcolor: '#192734',
-        font: { color: '#e1e8ed' },
-        xaxis: { gridcolor: '#38444d', showgrid: true },
-        yaxis: { gridcolor: '#38444d', showgrid: true, title: 'Unrealized PNL ($)' },
-        margin: { l: 50, r: 20, t: 20, b: 40 },
-        legend: { x: 0, y: 1 },
-        shapes: [{
-          type: 'line',
-          x0: filteredSnapshots[0]?.timestamp,
-          x1: filteredSnapshots[filteredSnapshots.length - 1]?.timestamp,
-          y0: 0,
-          y1: 0,
-          line: { color: '#38444d', width: 1, dash: 'dash' }
-        }]
-      }, { responsive: true });
+      if (chartInstances['position-pnl-chart']) chartInstances['position-pnl-chart'].destroy();
+      const ctx = document.getElementById('position-pnl-chart').getContext('2d');
+      chartInstances['position-pnl-chart'] = new Chart(ctx, {
+        ...getChartConfig('line', {
+          legend: { position: 'right' },
+          yScale: { title: { display: true, text: 'Unrealized PNL ($)', color: '#8899a6' } }
+        }),
+        data: { datasets }
+      });
     }
 
     function renderDrawdown() {
@@ -879,60 +873,73 @@
         drawdowns.push(drawdown);
       });
 
-      Plotly.newPlot('drawdown-chart', [{
-        x: timestamps,
-        y: drawdowns,
-        type: 'scatter',
-        mode: 'lines',
-        fill: 'tozeroy',
-        line: { color: '#e0245e', width: 2 },
-        fillcolor: 'rgba(224, 36, 94, 0.3)'
-      }], {
-        plot_bgcolor: '#0f1419',
-        paper_bgcolor: '#192734',
-        font: { color: '#e1e8ed' },
-        xaxis: { gridcolor: '#38444d', showgrid: true },
-        yaxis: {
-          gridcolor: '#38444d',
-          showgrid: true,
-          title: 'Drawdown (%)',
-          tickformat: '.2f'
-        },
-        margin: { l: 50, r: 20, t: 20, b: 40 },
-        shapes: [{
-          type: 'line',
-          x0: timestamps[0],
-          x1: timestamps[timestamps.length - 1],
-          y0: 0,
-          y1: 0,
-          line: { color: '#38444d', width: 1, dash: 'dash' }
-        }]
-      }, { responsive: true });
+      if (chartInstances['drawdown-chart']) chartInstances['drawdown-chart'].destroy();
+      const ctx = document.getElementById('drawdown-chart').getContext('2d');
+      chartInstances['drawdown-chart'] = new Chart(ctx, {
+        ...getChartConfig('line', {
+          yScale: {
+            title: { display: true, text: 'Drawdown (%)', color: '#8899a6' },
+            ticks: {
+              color: '#8899a6',
+              font: { size: 11 },
+              callback: function(value) {
+                return value.toFixed(2) + '%';
+              }
+            }
+          }
+        }),
+        data: {
+          labels: timestamps,
+          datasets: [{
+            label: 'Drawdown',
+            data: drawdowns,
+            borderColor: '#e0245e',
+            backgroundColor: 'rgba(224, 36, 94, 0.3)',
+            fill: true,
+            borderWidth: 2,
+            tension: 0.1
+          }]
+        }
+      });
     }
 
     function renderRealizedPnlChart() {
       const filteredTrades = allTrades;
 
       if (filteredTrades.length === 0) {
-        Plotly.newPlot('realized-pnl-chart', [], {
-          plot_bgcolor: '#0f1419',
-          paper_bgcolor: '#192734',
-          font: { color: '#8899a6' },
-          xaxis: { visible: false },
-          yaxis: { visible: false },
-          annotations: [{
-            text: 'No closed trades',
-            xref: 'paper',
-            yref: 'paper',
-            x: 0.5,
-            y: 0.5,
-            xanchor: 'center',
-            yanchor: 'middle',
-            showarrow: false,
-            font: { size: 16, color: '#657786' }
-          }],
-          margin: { l: 50, r: 20, t: 20, b: 40 }
-        }, { responsive: true });
+        if (chartInstances['realized-pnl-chart']) chartInstances['realized-pnl-chart'].destroy();
+        const ctx = document.getElementById('realized-pnl-chart').getContext('2d');
+        chartInstances['realized-pnl-chart'] = new Chart(ctx, {
+          type: 'line',
+          data: { datasets: [] },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { display: false },
+              tooltip: { enabled: false }
+            },
+            scales: {
+              x: { display: false },
+              y: { display: false }
+            }
+          },
+          plugins: [{
+            id: 'noDataMessage',
+            afterDraw: (chart) => {
+              const ctx = chart.ctx;
+              const width = chart.width;
+              const height = chart.height;
+              ctx.save();
+              ctx.textAlign = 'center';
+              ctx.textBaseline = 'middle';
+              ctx.font = '16px sans-serif';
+              ctx.fillStyle = '#657786';
+              ctx.fillText('No closed trades', width / 2, height / 2);
+              ctx.restore();
+            }
+          }]
+        });
         return;
       }
 
@@ -954,38 +961,36 @@
           coinData[trade.coin].y.push(coinData[trade.coin].cumulative);
         });
 
-      const traces = Object.entries(coinData).map(([coin, data]) => ({
-        x: data.x,
-        y: data.y,
-        name: coin,
-        type: 'scatter',
-        mode: 'lines+markers',
-        line: { width: 2 },
-        marker: { size: 6 }
+      const datasets = Object.entries(coinData).map(([coin, data]) => ({
+        label: coin,
+        data: data.x.map((x, i) => ({ x, y: data.y[i] })),
+        borderColor: getSymbolColor(coin),
+        backgroundColor: getSymbolColor(coin),
+        borderWidth: 2,
+        tension: 0.1,
+        fill: false,
+        pointRadius: 4,
+        pointHoverRadius: 6
       }));
 
-      Plotly.newPlot('realized-pnl-chart', traces, {
-        plot_bgcolor: '#0f1419',
-        paper_bgcolor: '#192734',
-        font: { color: '#e1e8ed' },
-        xaxis: { gridcolor: '#38444d', showgrid: true },
-        yaxis: {
-          gridcolor: '#38444d',
-          showgrid: true,
-          title: 'Cumulative Realized PNL ($)',
-          tickformat: '.2f'
-        },
-        margin: { l: 50, r: 20, t: 20, b: 40 },
-        legend: { x: 0, y: 1 },
-        shapes: [{
-          type: 'line',
-          x0: filteredTrades[0].timestamp,
-          x1: filteredTrades[filteredTrades.length - 1].timestamp,
-          y0: 0,
-          y1: 0,
-          line: { color: '#38444d', width: 1, dash: 'dash' }
-        }]
-      }, { responsive: true });
+      if (chartInstances['realized-pnl-chart']) chartInstances['realized-pnl-chart'].destroy();
+      const ctx = document.getElementById('realized-pnl-chart').getContext('2d');
+      chartInstances['realized-pnl-chart'] = new Chart(ctx, {
+        ...getChartConfig('line', {
+          legend: { position: 'top', align: 'start' },
+          yScale: {
+            title: { display: true, text: 'Cumulative Realized PNL ($)', color: '#8899a6' },
+            ticks: {
+              color: '#8899a6',
+              font: { size: 11 },
+              callback: function(value) {
+                return '$' + value.toFixed(2);
+              }
+            }
+          }
+        }),
+        data: { datasets }
+      });
     }
 
     function renderDailyCards() {

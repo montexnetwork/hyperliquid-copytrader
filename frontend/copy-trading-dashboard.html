@@ -131,6 +131,11 @@
       min-width: 300px;
     }
 
+    .chart-container canvas {
+      min-height: 300px;
+      max-height: 400px;
+    }
+
     .chart-title {
       font-size: clamp(1rem, 3vw, 1.3rem);
       margin-bottom: 15px;
@@ -412,13 +417,13 @@
         <div class="chart-title">
           <span class="wallet-indicator tracked-wallet"></span>Tracked Wallet Balance
         </div>
-        <div id="tracked-balance-chart"></div>
+        <canvas id="tracked-balance-chart"></canvas>
       </div>
       <div class="chart-container">
         <div class="chart-title">
           <span class="wallet-indicator user-wallet"></span>User Wallet Balance
         </div>
-        <div id="user-balance-chart"></div>
+        <canvas id="user-balance-chart"></canvas>
       </div>
     </div>
 
@@ -427,13 +432,13 @@
         <div class="chart-title">
           <span class="wallet-indicator tracked-wallet"></span>Tracked Wallet PNL
         </div>
-        <div id="tracked-pnl-chart"></div>
+        <canvas id="tracked-pnl-chart"></canvas>
       </div>
       <div class="chart-container">
         <div class="chart-title">
           <span class="wallet-indicator user-wallet"></span>User Wallet PNL
         </div>
-        <div id="user-pnl-chart"></div>
+        <canvas id="user-pnl-chart"></canvas>
       </div>
     </div>
 
@@ -442,29 +447,29 @@
         <div class="chart-title">
           <span class="wallet-indicator tracked-wallet"></span>Tracked Position Sizes
         </div>
-        <div id="tracked-positions-chart"></div>
+        <canvas id="tracked-positions-chart"></canvas>
       </div>
       <div class="chart-container">
         <div class="chart-title">
           <span class="wallet-indicator user-wallet"></span>User Position Sizes
         </div>
-        <div id="user-positions-chart"></div>
+        <canvas id="user-positions-chart"></canvas>
       </div>
     </div>
 
     <div class="chart-container">
       <div class="chart-title">Drawdown Analysis</div>
-      <div id="drawdown-chart"></div>
+      <canvas id="drawdown-chart"></canvas>
     </div>
 
     <div class="chart-container">
       <div class="chart-title">Entry Price Difference % (User vs Tracked)</div>
-      <div id="entry-diff-chart"></div>
+      <canvas id="entry-diff-chart"></canvas>
     </div>
 
     <div class="chart-container">
       <div class="chart-title">Risk Metrics</div>
-      <div id="risk-chart"></div>
+      <canvas id="risk-chart"></canvas>
     </div>
   </div>
 
@@ -498,27 +503,61 @@
       return SYMBOL_COLORS[index];
     }
 
-    const plotLayout = {
-      paper_bgcolor: '#192734',
-      plot_bgcolor: '#0f1419',
-      font: { color: '#e1e8ed' },
-      xaxis: {
-        gridcolor: '#38444d',
-        showgrid: true
-      },
-      yaxis: {
-        gridcolor: '#38444d',
-        showgrid: true
-      },
-      margin: { t: 20, r: 40, b: 40, l: 60 },
-      hovermode: 'x unified'
-    };
+    // Store chart instances for updates
+    let chartInstances = {};
 
-    const plotConfig = {
-      responsive: true,
-      displayModeBar: true,
-      displaylogo: false
-    };
+    // Chart.js dark theme configuration
+    function getChartConfig(type = 'line', options = {}) {
+      return {
+        type,
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: {
+            mode: 'index',
+            intersect: false
+          },
+          plugins: {
+            legend: {
+              labels: {
+                color: '#e1e8ed',
+                font: { size: 12 }
+              },
+              ...options.legend
+            },
+            tooltip: {
+              backgroundColor: '#192734',
+              titleColor: '#e1e8ed',
+              bodyColor: '#8899a6',
+              borderColor: '#38444d',
+              borderWidth: 1
+            }
+          },
+          scales: {
+            x: {
+              ticks: { color: '#8899a6', font: { size: 11 } },
+              grid: { color: '#38444d', display: true },
+              type: 'time',
+              time: { tooltipFormat: 'MMM d, HH:mm' }
+            },
+            y: {
+              ticks: { color: '#8899a6', font: { size: 11 } },
+              grid: { color: '#38444d', display: true },
+              ...options.yScale
+            },
+            ...(options.y2Scale && {
+              y2: {
+                position: 'right',
+                ticks: { color: '#8899a6', font: { size: 11 } },
+                grid: { display: false },
+                ...options.y2Scale
+              }
+            })
+          },
+          ...options.extra
+        }
+      };
+    }
 
     async function fetchSnapshots(date = null) {
       try {
@@ -640,242 +679,265 @@
     function renderBalanceChart() {
       const dates = filteredSnapshots.map(s => new Date(s.timestamp));
 
-      const trackedBalance = {
-        x: dates,
-        y: filteredSnapshots.map(s => s.tracked.accountValue),
-        type: 'scatter',
-        mode: 'lines',
-        line: { color: '#667eea', width: 3 },
-        fill: 'tozeroy',
-        fillcolor: 'rgba(102, 126, 234, 0.1)'
-      };
+      // Tracked Balance Chart
+      if (chartInstances['tracked-balance-chart']) chartInstances['tracked-balance-chart'].destroy();
+      const trackedCtx = document.getElementById('tracked-balance-chart').getContext('2d');
+      chartInstances['tracked-balance-chart'] = new Chart(trackedCtx, {
+        ...getChartConfig('line', {
+          legend: { display: false },
+          yScale: {
+            title: { display: true, text: 'Account Value (USD)', color: '#8899a6' },
+            ticks: {
+              color: '#8899a6',
+              font: { size: 11 },
+              callback: function(value) {
+                return '$' + value.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+              }
+            }
+          }
+        }),
+        data: {
+          labels: dates,
+          datasets: [{
+            label: 'Tracked Balance',
+            data: filteredSnapshots.map(s => s.tracked.accountValue),
+            borderColor: '#667eea',
+            backgroundColor: 'rgba(102, 126, 234, 0.1)',
+            fill: true,
+            borderWidth: 3,
+            tension: 0.1
+          }]
+        }
+      });
 
-      const userBalance = {
-        x: dates,
-        y: filteredSnapshots.map(s => s.user.accountValue),
-        type: 'scatter',
-        mode: 'lines',
-        line: { color: '#17bf63', width: 3 },
-        fill: 'tozeroy',
-        fillcolor: 'rgba(23, 191, 99, 0.1)'
-      };
-
-      const trackedLayout = {
-        ...plotLayout,
-        yaxis: {
-          ...plotLayout.yaxis,
-          title: 'Account Value (USD)',
-          tickformat: '$,.2f'
-        },
-        showlegend: false
-      };
-
-      const userLayout = {
-        ...plotLayout,
-        yaxis: {
-          ...plotLayout.yaxis,
-          title: 'Account Value (USD)',
-          tickformat: '$,.2f'
-        },
-        showlegend: false
-      };
-
-      Plotly.newPlot('tracked-balance-chart', [trackedBalance], trackedLayout, plotConfig);
-      Plotly.newPlot('user-balance-chart', [userBalance], userLayout, plotConfig);
+      // User Balance Chart
+      if (chartInstances['user-balance-chart']) chartInstances['user-balance-chart'].destroy();
+      const userCtx = document.getElementById('user-balance-chart').getContext('2d');
+      chartInstances['user-balance-chart'] = new Chart(userCtx, {
+        ...getChartConfig('line', {
+          legend: { display: false },
+          yScale: {
+            title: { display: true, text: 'Account Value (USD)', color: '#8899a6' },
+            ticks: {
+              color: '#8899a6',
+              font: { size: 11 },
+              callback: function(value) {
+                return '$' + value.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+              }
+            }
+          }
+        }),
+        data: {
+          labels: dates,
+          datasets: [{
+            label: 'User Balance',
+            data: filteredSnapshots.map(s => s.user.accountValue),
+            borderColor: '#17bf63',
+            backgroundColor: 'rgba(23, 191, 99, 0.1)',
+            fill: true,
+            borderWidth: 3,
+            tension: 0.1
+          }]
+        }
+      });
     }
 
     function renderPnlChart() {
       const dates = filteredSnapshots.map(s => new Date(s.timestamp));
 
-      const trackedPnl = {
-        x: dates,
-        y: filteredSnapshots.map(s => s.tracked.totalUnrealizedPnl),
-        type: 'scatter',
-        mode: 'lines',
-        line: { color: '#667eea', width: 3 },
-        fill: 'tozeroy',
-        fillcolor: 'rgba(102, 126, 234, 0.3)'
-      };
+      // Tracked PNL Chart
+      if (chartInstances['tracked-pnl-chart']) chartInstances['tracked-pnl-chart'].destroy();
+      const trackedCtx = document.getElementById('tracked-pnl-chart').getContext('2d');
+      chartInstances['tracked-pnl-chart'] = new Chart(trackedCtx, {
+        ...getChartConfig('line', {
+          legend: { display: false },
+          yScale: {
+            title: { display: true, text: 'Unrealized PNL (USD)', color: '#8899a6' },
+            ticks: {
+              color: '#8899a6',
+              font: { size: 11 },
+              callback: function(value) {
+                return '$' + value.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+              }
+            }
+          }
+        }),
+        data: {
+          labels: dates,
+          datasets: [{
+            label: 'Tracked PNL',
+            data: filteredSnapshots.map(s => s.tracked.totalUnrealizedPnl),
+            borderColor: '#667eea',
+            backgroundColor: 'rgba(102, 126, 234, 0.3)',
+            fill: true,
+            borderWidth: 3,
+            tension: 0.1
+          }]
+        }
+      });
 
-      const userPnl = {
-        x: dates,
-        y: filteredSnapshots.map(s => s.user.totalUnrealizedPnl),
-        type: 'scatter',
-        mode: 'lines',
-        line: { color: '#17bf63', width: 3 },
-        fill: 'tozeroy',
-        fillcolor: 'rgba(23, 191, 99, 0.3)'
-      };
-
-      const trackedLayout = {
-        ...plotLayout,
-        yaxis: {
-          ...plotLayout.yaxis,
-          title: 'Unrealized PNL (USD)',
-          tickformat: '$,.2f',
-          zeroline: true,
-          zerolinecolor: '#38444d',
-          zerolinewidth: 2
-        },
-        showlegend: false
-      };
-
-      const userLayout = {
-        ...plotLayout,
-        yaxis: {
-          ...plotLayout.yaxis,
-          title: 'Unrealized PNL (USD)',
-          tickformat: '$,.2f',
-          zeroline: true,
-          zerolinecolor: '#38444d',
-          zerolinewidth: 2
-        },
-        showlegend: false
-      };
-
-      Plotly.newPlot('tracked-pnl-chart', [trackedPnl], trackedLayout, plotConfig);
-      Plotly.newPlot('user-pnl-chart', [userPnl], userLayout, plotConfig);
+      // User PNL Chart
+      if (chartInstances['user-pnl-chart']) chartInstances['user-pnl-chart'].destroy();
+      const userCtx = document.getElementById('user-pnl-chart').getContext('2d');
+      chartInstances['user-pnl-chart'] = new Chart(userCtx, {
+        ...getChartConfig('line', {
+          legend: { display: false },
+          yScale: {
+            title: { display: true, text: 'Unrealized PNL (USD)', color: '#8899a6' },
+            ticks: {
+              color: '#8899a6',
+              font: { size: 11 },
+              callback: function(value) {
+                return '$' + value.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+              }
+            }
+          }
+        }),
+        data: {
+          labels: dates,
+          datasets: [{
+            label: 'User PNL',
+            data: filteredSnapshots.map(s => s.user.totalUnrealizedPnl),
+            borderColor: '#17bf63',
+            backgroundColor: 'rgba(23, 191, 99, 0.3)',
+            fill: true,
+            borderWidth: 3,
+            tension: 0.1
+          }]
+        }
+      });
     }
 
     function renderPositionSizeCharts() {
-      const trackedPositionsByTime = {};
-      const userPositionsByTime = {};
+      const trackedCoinData = {};
+      const userCoinData = {};
 
       filteredSnapshots.forEach(snapshot => {
         const timestamp = new Date(snapshot.timestamp);
 
-        trackedPositionsByTime[timestamp] = {};
         snapshot.tracked.positions.forEach(pos => {
-          trackedPositionsByTime[timestamp][pos.coin] = pos.notionalValue;
+          if (!trackedCoinData[pos.coin]) {
+            trackedCoinData[pos.coin] = { x: [], y: [] };
+          }
+          trackedCoinData[pos.coin].x.push(timestamp);
+          trackedCoinData[pos.coin].y.push(pos.notionalValue);
         });
 
-        userPositionsByTime[timestamp] = {};
         snapshot.user.positions.forEach(pos => {
-          userPositionsByTime[timestamp][pos.coin] = pos.notionalValue;
+          if (!userCoinData[pos.coin]) {
+            userCoinData[pos.coin] = { x: [], y: [] };
+          }
+          userCoinData[pos.coin].x.push(timestamp);
+          userCoinData[pos.coin].y.push(pos.notionalValue);
         });
       });
 
-      const timestamps = Object.keys(trackedPositionsByTime).map(t => new Date(t));
-      const trackedCoins = new Set();
-      const userCoins = new Set();
-
-      Object.values(trackedPositionsByTime).forEach(positions => {
-        Object.keys(positions).forEach(coin => trackedCoins.add(coin));
-      });
-
-      Object.values(userPositionsByTime).forEach(positions => {
-        Object.keys(positions).forEach(coin => userCoins.add(coin));
-      });
-
-      const colorPalette = [
-        '#667eea', '#17bf63', '#e0245e', '#ff6b9d', '#ffad1f', '#1da1f2',
-        '#794bc4', '#f91880', '#00ba7c', '#ffb700', '#8b9dc3', '#c0deed'
-      ];
-
-      const trackedTraces = Array.from(trackedCoins).map((coin, idx) => ({
-        x: timestamps,
-        y: timestamps.map(t => trackedPositionsByTime[t][coin] || null),
-        name: coin,
-        type: 'scatter',
-        mode: 'lines',
-        line: {
-          color: colorPalette[idx % colorPalette.length],
-          width: 2
-        },
-        connectgaps: false
+      // Tracked Positions Chart
+      const trackedDatasets = Object.entries(trackedCoinData).map(([coin, data]) => ({
+        label: coin,
+        data: data.x.map((x, i) => ({ x, y: data.y[i] })),
+        borderColor: getSymbolColor(coin),
+        backgroundColor: getSymbolColor(coin) + '20',
+        borderWidth: 2,
+        tension: 0.1,
+        fill: false
       }));
 
-      const userTraces = Array.from(userCoins).map((coin, idx) => ({
-        x: timestamps,
-        y: timestamps.map(t => userPositionsByTime[t][coin] || null),
-        name: coin,
-        type: 'scatter',
-        mode: 'lines',
-        line: {
-          color: colorPalette[idx % colorPalette.length],
-          width: 2
-        },
-        connectgaps: false
+      if (chartInstances['tracked-positions-chart']) chartInstances['tracked-positions-chart'].destroy();
+      const trackedCtx = document.getElementById('tracked-positions-chart').getContext('2d');
+      chartInstances['tracked-positions-chart'] = new Chart(trackedCtx, {
+        ...getChartConfig('line', {
+          legend: { position: 'right' },
+          yScale: {
+            title: { display: true, text: 'Position Size (USD)', color: '#8899a6' },
+            ticks: {
+              color: '#8899a6',
+              font: { size: 11 },
+              callback: function(value) {
+                return '$' + value.toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0});
+              }
+            }
+          }
+        }),
+        data: { datasets: trackedDatasets }
+      });
+
+      // User Positions Chart
+      const userDatasets = Object.entries(userCoinData).map(([coin, data]) => ({
+        label: coin,
+        data: data.x.map((x, i) => ({ x, y: data.y[i] })),
+        borderColor: getSymbolColor(coin),
+        backgroundColor: getSymbolColor(coin) + '20',
+        borderWidth: 2,
+        tension: 0.1,
+        fill: false
       }));
 
-      const trackedLayout = {
-        ...plotLayout,
-        yaxis: {
-          ...plotLayout.yaxis,
-          title: 'Position Size (USD)',
-          tickformat: '$,.0f'
-        },
-        legend: {
-          x: 1.02,
-          y: 1,
-          xanchor: 'left',
-          yanchor: 'top',
-          font: { size: 10 }
-        }
-      };
-
-      const userLayout = {
-        ...plotLayout,
-        yaxis: {
-          ...plotLayout.yaxis,
-          title: 'Position Size (USD)',
-          tickformat: '$,.0f'
-        },
-        legend: {
-          x: 1.02,
-          y: 1,
-          xanchor: 'left',
-          yanchor: 'top',
-          font: { size: 10 }
-        }
-      };
-
-      Plotly.newPlot('tracked-positions-chart', trackedTraces, trackedLayout, plotConfig);
-      Plotly.newPlot('user-positions-chart', userTraces, userLayout, plotConfig);
+      if (chartInstances['user-positions-chart']) chartInstances['user-positions-chart'].destroy();
+      const userCtx = document.getElementById('user-positions-chart').getContext('2d');
+      chartInstances['user-positions-chart'] = new Chart(userCtx, {
+        ...getChartConfig('line', {
+          legend: { position: 'right' },
+          yScale: {
+            title: { display: true, text: 'Position Size (USD)', color: '#8899a6' },
+            ticks: {
+              color: '#8899a6',
+              font: { size: 11 },
+              callback: function(value) {
+                return '$' + value.toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0});
+              }
+            }
+          }
+        }),
+        data: { datasets: userDatasets }
+      });
     }
 
     function renderDrawdownChart() {
       const dates = filteredSnapshots.map(s => new Date(s.timestamp));
-
       const trackedDrawdown = calculateDrawdown(filteredSnapshots.map(s => s.tracked.accountValue));
       const userDrawdown = calculateDrawdown(filteredSnapshots.map(s => s.user.accountValue));
 
-      const trackedDrawdownTrace = {
-        x: dates,
-        y: trackedDrawdown,
-        name: 'Tracked Wallet Drawdown',
-        type: 'scatter',
-        mode: 'lines',
-        line: { color: '#667eea', width: 2 },
-        fill: 'tozeroy',
-        fillcolor: 'rgba(102, 126, 234, 0.3)'
-      };
-
-      const userDrawdownTrace = {
-        x: dates,
-        y: userDrawdown,
-        name: 'User Wallet Drawdown',
-        type: 'scatter',
-        mode: 'lines',
-        line: { color: '#17bf63', width: 2 },
-        fill: 'tozeroy',
-        fillcolor: 'rgba(23, 191, 99, 0.3)'
-      };
-
-      const layout = {
-        ...plotLayout,
-        yaxis: {
-          ...plotLayout.yaxis,
-          title: 'Drawdown (%)',
-          tickformat: '.2f',
-          zeroline: true,
-          zerolinecolor: '#38444d',
-          zerolinewidth: 2
-        },
-        legend: { x: 0.01, y: 0.01 }
-      };
-
-      Plotly.newPlot('drawdown-chart', [trackedDrawdownTrace, userDrawdownTrace], layout, plotConfig);
+      if (chartInstances['drawdown-chart']) chartInstances['drawdown-chart'].destroy();
+      const ctx = document.getElementById('drawdown-chart').getContext('2d');
+      chartInstances['drawdown-chart'] = new Chart(ctx, {
+        ...getChartConfig('line', {
+          legend: { position: 'bottom', align: 'start' },
+          yScale: {
+            title: { display: true, text: 'Drawdown (%)', color: '#8899a6' },
+            ticks: {
+              color: '#8899a6',
+              font: { size: 11 },
+              callback: function(value) {
+                return value.toFixed(2) + '%';
+              }
+            }
+          }
+        }),
+        data: {
+          labels: dates,
+          datasets: [
+            {
+              label: 'Tracked Wallet Drawdown',
+              data: trackedDrawdown,
+              borderColor: '#667eea',
+              backgroundColor: 'rgba(102, 126, 234, 0.3)',
+              fill: true,
+              borderWidth: 2,
+              tension: 0.1
+            },
+            {
+              label: 'User Wallet Drawdown',
+              data: userDrawdown,
+              borderColor: '#17bf63',
+              backgroundColor: 'rgba(23, 191, 99, 0.3)',
+              fill: true,
+              borderWidth: 2,
+              tension: 0.1
+            }
+          ]
+        }
+      });
     }
 
     function calculateDrawdown(accountValues) {
@@ -897,139 +959,119 @@
     }
 
     function renderEntryDiffChart() {
-      const entryDiffByTime = {};
-      const allCoins = new Set();
+      const coinData = {};
 
       filteredSnapshots.forEach(snapshot => {
         const timestamp = new Date(snapshot.timestamp);
-        entryDiffByTime[timestamp] = {};
-
         const trackedPositions = {};
         const userPositions = {};
 
         snapshot.tracked.positions.forEach(pos => {
           trackedPositions[pos.coin] = pos.entryPrice;
-          allCoins.add(pos.coin);
         });
 
         snapshot.user.positions.forEach(pos => {
           userPositions[pos.coin] = pos.entryPrice;
-          allCoins.add(pos.coin);
         });
 
-        allCoins.forEach(coin => {
-          if (trackedPositions[coin] && userPositions[coin]) {
+        Object.keys(trackedPositions).forEach(coin => {
+          if (userPositions[coin]) {
+            if (!coinData[coin]) {
+              coinData[coin] = { x: [], y: [] };
+            }
             const diffPercent = ((userPositions[coin] - trackedPositions[coin]) / trackedPositions[coin]) * 100;
-            entryDiffByTime[timestamp][coin] = diffPercent;
+            coinData[coin].x.push(timestamp);
+            coinData[coin].y.push(diffPercent);
           }
         });
       });
 
-      const timestamps = Object.keys(entryDiffByTime).map(t => new Date(t));
-
-      const colorPalette = [
-        '#667eea', '#17bf63', '#e0245e', '#ff6b9d', '#ffad1f', '#1da1f2',
-        '#794bc4', '#f91880', '#00ba7c', '#ffb700', '#8b9dc3', '#c0deed'
-      ];
-
-      const traces = Array.from(allCoins).map((coin, idx) => ({
-        x: timestamps,
-        y: timestamps.map(t => entryDiffByTime[t][coin] || null),
-        name: coin,
-        type: 'scatter',
-        mode: 'lines+markers',
-        line: {
-          color: colorPalette[idx % colorPalette.length],
-          width: 2
-        },
-        marker: { size: 4 },
-        connectgaps: false
+      const datasets = Object.entries(coinData).map(([coin, data]) => ({
+        label: coin,
+        data: data.x.map((x, i) => ({ x, y: data.y[i] })),
+        borderColor: getSymbolColor(coin),
+        backgroundColor: getSymbolColor(coin),
+        borderWidth: 2,
+        tension: 0.1,
+        fill: false,
+        pointRadius: 4,
+        pointHoverRadius: 6
       }));
 
-      const layout = {
-        ...plotLayout,
-        yaxis: {
-          ...plotLayout.yaxis,
-          title: 'Entry Price Difference (%)',
-          tickformat: '.2f',
-          ticksuffix: '%',
-          zeroline: true,
-          zerolinecolor: '#38444d',
-          zerolinewidth: 2
-        },
-        legend: {
-          x: 1.02,
-          y: 1,
-          xanchor: 'left',
-          yanchor: 'top',
-          font: { size: 10 }
-        }
-      };
-
-      Plotly.newPlot('entry-diff-chart', traces, layout, plotConfig);
+      if (chartInstances['entry-diff-chart']) chartInstances['entry-diff-chart'].destroy();
+      const ctx = document.getElementById('entry-diff-chart').getContext('2d');
+      chartInstances['entry-diff-chart'] = new Chart(ctx, {
+        ...getChartConfig('line', {
+          legend: { position: 'right' },
+          yScale: {
+            title: { display: true, text: 'Entry Price Difference (%)', color: '#8899a6' },
+            ticks: {
+              color: '#8899a6',
+              font: { size: 11 },
+              callback: function(value) {
+                return value.toFixed(2) + '%';
+              }
+            }
+          }
+        }),
+        data: { datasets }
+      });
     }
 
     function renderRiskChart() {
       const dates = filteredSnapshots.map(s => new Date(s.timestamp));
 
-      const trackedLeverage = {
-        x: dates,
-        y: filteredSnapshots.map(s => s.tracked.averageLeverage),
-        name: 'Tracked Avg Leverage',
-        type: 'scatter',
-        mode: 'lines',
-        line: { color: '#667eea', width: 2 },
-        yaxis: 'y'
-      };
-
-      const userLeverage = {
-        x: dates,
-        y: filteredSnapshots.map(s => s.user.averageLeverage),
-        name: 'User Avg Leverage',
-        type: 'scatter',
-        mode: 'lines',
-        line: { color: '#17bf63', width: 2 },
-        yaxis: 'y'
-      };
-
-      const trackedMarginRatio = {
-        x: dates,
-        y: filteredSnapshots.map(s => s.tracked.crossMarginRatio),
-        name: 'Tracked Margin Ratio',
-        type: 'scatter',
-        mode: 'lines',
-        line: { color: '#e0245e', width: 2, dash: 'dot' },
-        yaxis: 'y2'
-      };
-
-      const userMarginRatio = {
-        x: dates,
-        y: filteredSnapshots.map(s => s.user.crossMarginRatio),
-        name: 'User Margin Ratio',
-        type: 'scatter',
-        mode: 'lines',
-        line: { color: '#ff6b9d', width: 2, dash: 'dot' },
-        yaxis: 'y2'
-      };
-
-      const layout = {
-        ...plotLayout,
-        yaxis: {
-          ...plotLayout.yaxis,
-          title: 'Average Leverage',
-          side: 'left'
-        },
-        yaxis2: {
-          title: 'Margin Ratio (%)',
-          overlaying: 'y',
-          side: 'right',
-          gridcolor: '#38444d',
-          showgrid: false
-        },
-        legend: { x: 0.01, y: 0.99 }
-      };
-
-      Plotly.newPlot('risk-chart', [trackedLeverage, userLeverage, trackedMarginRatio, userMarginRatio], layout, plotConfig);
+      if (chartInstances['risk-chart']) chartInstances['risk-chart'].destroy();
+      const ctx = document.getElementById('risk-chart').getContext('2d');
+      chartInstances['risk-chart'] = new Chart(ctx, {
+        ...getChartConfig('line', {
+          legend: { position: 'top', align: 'start' },
+          y2Scale: { title: { display: true, text: 'Margin Ratio (%)', color: '#8899a6' } }
+        }),
+        data: {
+          labels: dates,
+          datasets: [
+            {
+              label: 'Tracked Avg Leverage',
+              data: filteredSnapshots.map(s => s.tracked.averageLeverage),
+              borderColor: '#667eea',
+              backgroundColor: 'rgba(102, 126, 234, 0.1)',
+              borderWidth: 2,
+              yAxisID: 'y',
+              tension: 0.1
+            },
+            {
+              label: 'User Avg Leverage',
+              data: filteredSnapshots.map(s => s.user.averageLeverage),
+              borderColor: '#17bf63',
+              backgroundColor: 'rgba(23, 191, 99, 0.1)',
+              borderWidth: 2,
+              yAxisID: 'y',
+              tension: 0.1
+            },
+            {
+              label: 'Tracked Margin Ratio',
+              data: filteredSnapshots.map(s => s.tracked.crossMarginRatio),
+              borderColor: '#e0245e',
+              backgroundColor: 'rgba(224, 36, 94, 0.1)',
+              borderWidth: 2,
+              borderDash: [5, 5],
+              yAxisID: 'y2',
+              tension: 0.1
+            },
+            {
+              label: 'User Margin Ratio',
+              data: filteredSnapshots.map(s => s.user.crossMarginRatio),
+              borderColor: '#ff6b9d',
+              backgroundColor: 'rgba(255, 107, 157, 0.1)',
+              borderWidth: 2,
+              borderDash: [5, 5],
+              yAxisID: 'y2',
+              tension: 0.1
+            }
+          ]
+        }
+      });
     }
 
     function showError(message) {
