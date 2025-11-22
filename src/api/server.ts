@@ -243,10 +243,10 @@ app.get('/api/daily-summary', (req: Request, res: Response) => {
   }
 });
 
-app.get('/api/recent-orders', (req: Request, res: Response) => {
+app.get('/api/recent-closes', (req: Request, res: Response) => {
   try {
     if (!fs.existsSync(DATA_DIR)) {
-      return res.json({ orders: [], message: 'No trade data available yet' });
+      return res.json({ closes: [], message: 'No trade data available yet' });
     }
 
     const today = new Date().toISOString().split('T')[0];
@@ -255,7 +255,7 @@ app.get('/api/recent-orders', (req: Request, res: Response) => {
 
     if (!fs.existsSync(filePath)) {
       return res.json({
-        orders: [],
+        closes: [],
         count: 0,
         message: 'No trades today'
       });
@@ -275,17 +275,20 @@ app.get('/api/recent-orders', (req: Request, res: Response) => {
     });
 
     const oneMinuteAgo = Date.now() - (60 * 1000);
-    const recentOrders = allTrades
-      .filter(trade => trade.timestamp >= oneMinuteAgo)
+    const recentCloses = allTrades
+      .filter(trade =>
+        trade.timestamp >= oneMinuteAgo &&
+        ['close', 'reduce', 'reverse'].includes(trade.action)
+      )
       .sort((a, b) => b.timestamp - a.timestamp);
 
     res.json({
-      orders: recentOrders,
-      count: recentOrders.length
+      closes: recentCloses,
+      count: recentCloses.length
     });
   } catch (error) {
-    console.error('Error reading recent orders:', error);
-    res.status(500).json({ error: 'Failed to read recent orders' });
+    console.error('Error reading recent closes:', error);
+    res.status(500).json({ error: 'Failed to read recent closes' });
   }
 });
 

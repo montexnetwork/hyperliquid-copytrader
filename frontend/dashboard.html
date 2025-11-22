@@ -651,7 +651,7 @@
     </div>
 
     <div class="recent-orders-container">
-      <div class="recent-orders-title">Recent Orders (Last Minute)</div>
+      <div class="recent-orders-title">Recent Closes (Last Minute)</div>
       <div id="orders-table-container">
         <table class="orders-table">
           <thead>
@@ -661,12 +661,13 @@
               <th>Side</th>
               <th>Size</th>
               <th>Price</th>
+              <th>PnL</th>
               <th>Action</th>
             </tr>
           </thead>
           <tbody id="orders-table-body">
             <tr>
-              <td colspan="6" class="no-orders-text">Loading orders...</td>
+              <td colspan="7" class="no-orders-text">Loading closes...</td>
             </tr>
           </tbody>
         </table>
@@ -727,7 +728,7 @@
     let allTrades = [];
     let selectedDate = new Date().toISOString().split('T')[0];
     let dailySummaryData = [];
-    let recentOrders = [];
+    let recentCloses = [];
 
     // Consistent color palette for symbols across all charts
     const SYMBOL_COLORS = [
@@ -791,19 +792,19 @@
         updateDashboard();
 
         try {
-          const ordersRes = await fetch('/api/recent-orders');
-          if (ordersRes.ok) {
-            const ordersData = await ordersRes.json();
-            recentOrders = ordersData.orders || [];
-            renderRecentOrders();
+          const closesRes = await fetch('/api/recent-closes');
+          if (closesRes.ok) {
+            const closesData = await closesRes.json();
+            recentCloses = closesData.closes || [];
+            renderRecentCloses();
           } else {
-            recentOrders = [];
-            renderRecentOrders();
+            recentCloses = [];
+            renderRecentCloses();
           }
-        } catch (ordersError) {
-          console.error('Failed to fetch recent orders:', ordersError);
-          recentOrders = [];
-          renderRecentOrders();
+        } catch (closesError) {
+          console.error('Failed to fetch recent closes:', closesError);
+          recentCloses = [];
+          renderRecentCloses();
         }
         updateLastUpdatedTime();
 
@@ -1313,28 +1314,32 @@
       }
     }
 
-    function renderRecentOrders() {
+    function renderRecentCloses() {
       const tbody = document.getElementById('orders-table-body');
 
-      if (recentOrders.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" class="no-orders-text">No orders in the last minute</td></tr>';
+      if (recentCloses.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="no-orders-text">No closes in the last minute</td></tr>';
         return;
       }
 
-      tbody.innerHTML = recentOrders.map(order => {
-        const time = new Date(order.timestamp);
+      tbody.innerHTML = recentCloses.map(close => {
+        const time = new Date(close.timestamp);
         const timeStr = time.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
-        const sideClass = order.side === 'buy' ? 'order-side-buy' : 'order-side-sell';
-        const sideText = order.side.toUpperCase();
+        const sideClass = close.side === 'buy' ? 'order-side-buy' : 'order-side-sell';
+        const sideText = close.side.toUpperCase();
+        const pnl = close.realizedPnl || 0;
+        const pnlClass = pnl >= 0 ? 'order-side-buy' : 'order-side-sell';
+        const pnlSign = pnl >= 0 ? '+' : '';
 
         return `
           <tr>
             <td class="order-time">${timeStr}</td>
-            <td><strong>${order.coin}</strong></td>
+            <td><strong>${close.coin}</strong></td>
             <td class="${sideClass}">${sideText}</td>
-            <td>${order.size.toFixed(4)}</td>
-            <td>$${order.price.toFixed(4)}</td>
-            <td>${order.action || 'N/A'}</td>
+            <td>${close.size.toFixed(4)}</td>
+            <td>$${close.price.toFixed(4)}</td>
+            <td class="${pnlClass}">${pnlSign}$${pnl.toFixed(2)}</td>
+            <td>${close.action || 'N/A'}</td>
           </tr>
         `;
       }).join('');
