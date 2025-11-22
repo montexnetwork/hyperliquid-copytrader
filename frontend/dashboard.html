@@ -772,27 +772,39 @@
         }
 
         const targetDate = date || selectedDate;
-        const [snapshotsRes, tradesRes, summaryRes, ordersRes] = await Promise.all([
+        const [snapshotsRes, tradesRes, summaryRes] = await Promise.all([
           fetch(`/api/user-snapshots?date=${targetDate}`),
           fetch(`/api/trades?date=${targetDate}`),
-          fetch('/api/daily-summary?days=10'),
-          fetch('/api/recent-orders')
+          fetch('/api/daily-summary?days=10')
         ]);
 
         const snapshotsData = await snapshotsRes.json();
         const tradesData = await tradesRes.json();
         const summaryData = await summaryRes.json();
-        const ordersData = await ordersRes.json();
 
         if (!snapshotsRes.ok) throw new Error(snapshotsData.error || 'Failed to fetch snapshots');
 
         filteredSnapshots = snapshotsData.snapshots || [];
         allTrades = tradesData.trades || [];
         dailySummaryData = summaryData.days || [];
-        recentOrders = ordersData.orders || [];
 
         updateDashboard();
-        renderRecentOrders();
+
+        try {
+          const ordersRes = await fetch('/api/recent-orders');
+          if (ordersRes.ok) {
+            const ordersData = await ordersRes.json();
+            recentOrders = ordersData.orders || [];
+            renderRecentOrders();
+          } else {
+            recentOrders = [];
+            renderRecentOrders();
+          }
+        } catch (ordersError) {
+          console.error('Failed to fetch recent orders:', ordersError);
+          recentOrders = [];
+          renderRecentOrders();
+        }
         updateLastUpdatedTime();
 
         document.getElementById('loading').style.display = 'none';
