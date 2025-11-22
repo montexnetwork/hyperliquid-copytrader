@@ -200,7 +200,7 @@
 
     .daily-cards-grid {
       display: grid;
-      grid-template-columns: repeat(7, 1fr);
+      grid-template-columns: repeat(5, 1fr);
       gap: 10px;
     }
 
@@ -216,7 +216,7 @@
       box-shadow:
         0 4px 16px rgba(0, 0, 0, 0.2),
         inset 0 1px 0 rgba(255, 255, 255, 0.05);
-      min-height: 44px;
+      min-height: 140px;
     }
 
     .daily-card:hover {
@@ -275,7 +275,14 @@
     }
 
     .daily-card-chart {
-      height: 50px;
+      height: 40px;
+      margin-top: 8px;
+      position: relative;
+    }
+
+    .daily-card-chart canvas {
+      width: 100% !important;
+      height: 40px !important;
     }
 
     .no-data-text {
@@ -498,7 +505,7 @@
     /* Large tablets and small desktops */
     @media (min-width: 1025px) and (max-width: 1440px) {
       .daily-cards-grid {
-        grid-template-columns: repeat(7, 1fr);
+        grid-template-columns: repeat(5, 1fr);
       }
     }
 
@@ -525,7 +532,7 @@
 
   <div id="dashboard" style="display: none;">
     <div class="daily-cards-container">
-      <div class="daily-cards-title">Last 7 Days</div>
+      <div class="daily-cards-title">Last 10 Days</div>
       <div class="daily-cards-grid" id="daily-cards-grid">
         <!-- Daily cards will be generated here -->
       </div>
@@ -663,7 +670,7 @@
         const [snapshotsRes, tradesRes, summaryRes] = await Promise.all([
           fetch(`/api/user-snapshots?date=${targetDate}`),
           fetch(`/api/trades?date=${targetDate}`),
-          fetch('/api/daily-summary?days=7')
+          fetch('/api/daily-summary?days=10')
         ]);
 
         const snapshotsData = await snapshotsRes.json();
@@ -1088,11 +1095,11 @@
       });
     }
 
-    function renderDailyCards() {
+    async function renderDailyCards() {
       const container = document.getElementById('daily-cards-grid');
       container.innerHTML = '';
 
-      dailySummaryData.forEach((day, index) => {
+      for (const day of dailySummaryData) {
         const card = document.createElement('div');
         card.className = day.hasData ? 'daily-card' : 'daily-card no-data';
 
@@ -1108,6 +1115,7 @@
           const pnlClass = day.totalPnl >= 0 ? 'positive' : 'negative';
           const pnlSign = day.totalPnl >= 0 ? '+' : '';
 
+          const chartId = `daily-chart-${day.date}`;
           card.innerHTML = `
             <div class="daily-card-date">${dateLabel}</div>
             <div class="daily-card-pnl ${pnlClass}">
@@ -1116,10 +1124,15 @@
             <div class="daily-card-percent">
               ${pnlSign}${day.pnlPercentage.toFixed(2)}%
             </div>
+            <div class="daily-card-chart">
+              <canvas id="${chartId}"></canvas>
+            </div>
           `;
 
           card.addEventListener('click', () => filterByDay(day.date));
           container.appendChild(card);
+
+          renderDailyMiniChart(chartId, day.date, pnlClass === 'positive');
         } else {
           card.innerHTML = `
             <div class="daily-card-date">${dateLabel}</div>
@@ -1127,7 +1140,57 @@
           `;
           container.appendChild(card);
         }
-      });
+      }
+    }
+
+    async function renderDailyMiniChart(chartId, date, isPositive) {
+      try {
+        const response = await fetch(`/api/user-snapshots?date=${date}`);
+        const data = await response.json();
+
+        if (!data.snapshots || data.snapshots.length === 0) {
+          return;
+        }
+
+        const balances = data.snapshots.map(s => parseFloat(s.wallet.accountValue));
+        const color = isPositive ? '#17bf63' : '#e0245e';
+
+        const ctx = document.getElementById(chartId);
+        if (!ctx) return;
+
+        new Chart(ctx.getContext('2d'), {
+          type: 'line',
+          data: {
+            labels: data.snapshots.map(s => new Date(s.timestamp)),
+            datasets: [{
+              data: balances,
+              borderColor: color,
+              backgroundColor: color + '20',
+              borderWidth: 1.5,
+              tension: 0.3,
+              pointRadius: 0,
+              fill: true
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { display: false },
+              tooltip: { enabled: false }
+            },
+            scales: {
+              x: { display: false },
+              y: { display: false }
+            },
+            elements: {
+              line: { borderWidth: 1.5 }
+            }
+          }
+        });
+      } catch (error) {
+        console.error(`Failed to render mini chart for ${date}:`, error);
+      }
     }
 
     fetchData();
