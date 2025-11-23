@@ -9,6 +9,9 @@ if (!(WebSocket.prototype as any).dispatchEvent) {
     const eventName = event.type;
 
     try {
+      if (eventName === 'error' && this.listenerCount('error') === 0) {
+        return true;
+      }
       this.emit(eventName, event);
       return !event.defaultPrevented;
     } catch (error) {
