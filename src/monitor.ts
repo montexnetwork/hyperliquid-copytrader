@@ -7,8 +7,9 @@ import { PositionMonitorService } from './services/position-monitor.service';
 import { SnapshotLoggerService } from './services/snapshot-logger.service';
 import { RiskMonitorService } from './services/risk-monitor.service';
 import { TradeLoggerService } from './services/trade-logger.service';
-import { calculateBalanceRatio } from './utils/scaling.utils';
+import { calculateBalanceRatio, scalePositionSize, formatScaledSize } from './utils/scaling.utils';
 import { loadConfig } from './config';
+import { Position } from './models/position.model';
 
 const DEFAULT_POLL_INTERVAL = 1000;
 
@@ -182,6 +183,85 @@ const monitorTrackedWallet = async (
 
   let isFirstRun = true;
 
+  const syncMissingPositions = async (
+    trackedPositions: Position[],
+    userPositions: Position[],
+    balanceRatio: number,
+    service: HyperliquidService,
+    telegramService: TelegramService,
+    minOrderValue: number,
+    lastTradeTimes: Map<string, number>
+  ): Promise<void> => {
+    const userCoins = new Set(userPositions.map(p => p.coin));
+
+    for (const trackedPosition of trackedPositions) {
+      if (userCoins.has(trackedPosition.coin)) {
+        continue;
+      }
+
+      const scaledSize = formatScaledSize(scalePositionSize(trackedPosition.size, balanceRatio));
+      const scaledNotionalValue = scaledSize * trackedPosition.markPrice;
+
+      if (scaledNotionalValue < minOrderValue) {
+        continue;
+      }
+
+      const currentPrice = trackedPosition.markPrice;
+      const trackedEntry = trackedPosition.entryPrice;
+      const side = trackedPosition.side;
+
+      let shouldSync = false;
+      if (side === 'long' && currentPrice < trackedEntry) {
+        shouldSync = true;
+      } else if (side === 'short' && currentPrice > trackedEntry) {
+        shouldSync = true;
+      }
+
+      if (!shouldSync) {
+        continue;
+      }
+
+      const priceImprovement = side === 'long'
+        ? ((trackedEntry - currentPrice) / trackedEntry) * 100
+        : ((currentPrice - trackedEntry) / trackedEntry) * 100;
+
+      try {
+        console.log(`🔄 SYNC ${side.toUpperCase()} ${trackedPosition.coin} | ${scaledSize.toFixed(4)} @ $${currentPrice.toFixed(4)} (tracked: $${trackedEntry.toFixed(4)}, improvement: ${priceImprovement.toFixed(2)}%)`);
+
+        if (side === 'long') {
+          await service.openLong(trackedPosition.coin, scaledSize, currentPrice);
+        } else {
+          await service.openShort(trackedPosition.coin, scaledSize, currentPrice);
+        }
+
+        console.log(`✓ Synced ${side} position: ${trackedPosition.coin}\n`);
+
+        lastTradeTimes.set(trackedPosition.coin, Date.now());
+
+        if (telegramService.isEnabled()) {
+          await telegramService.sendMessage(
+            `🔄 Position synced:\n` +
+            `${trackedPosition.coin} ${side.toUpperCase()}\n` +
+            `Size: ${scaledSize.toFixed(4)}\n` +
+            `Tracked entry: $${trackedEntry.toFixed(4)}\n` +
+            `Your entry: $${currentPrice.toFixed(4)}\n` +
+            `Price improvement: ${priceImprovement.toFixed(2)}%\n` +
+            `Notional: $${scaledNotionalValue.toFixed(2)}`
+          );
+        }
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        console.error(`✗ Failed to sync position ${trackedPosition.coin}: ${errorMessage}`);
+
+        if (telegramService.isEnabled()) {
+          await telegramService.sendError(
+            `Failed to sync position ${trackedPosition.coin}: ${errorMessage}`
+          );
+        }
+      }
+    }
+  };
+
   const updateBalanceRatio = async (): Promise<void> => {
     if (!userWallet) return;
 
@@ -349,6 +429,18 @@ const monitorTrackedWallet = async (
       }
     }
 
+    if (service.canExecuteTrades()) {
+      await syncMissingPositions(
+        trackedPositions,
+        userPositions,
+        balanceRatio,
+        service,
+        telegramService,
+        config.minOrderValue,
+        lastTradeTimes
+      );
+    }
+
     const MIN_POSITION_VALUE = 10;
     for (const position of userPositions) {
       const notionalValue = position.size * position.markPrice;
@@ -510,6 +602,34 @@ const monitorTrackedWallet = async (
     }
   }, warningCheckInterval);
 
+  const restart = async () => {
+    console.log(`\n\n🔄 Bot restarting (Telegram command)`);
+    clearInterval(intervalId);
+    clearInterval(reconnectCheckId);
+    clearInterval(warningCheckId);
+
+    try {
+      if (webSocketFillsService) {
+        await Promise.race([
+          webSocketFillsService.close(),
+          new Promise(resolve => setTimeout(resolve, 1000))
+        ]);
+      }
+      await Promise.race([
+        service.cleanup(),
+        new Promise(resolve => setTimeout(resolve, 1000))
+      ]);
+      await Promise.race([
+        telegramService.stop(),
+        new Promise(resolve => setTimeout(resolve, 1000))
+      ]);
+    } catch (error) {
+      console.error('Error during restart:', error);
+    }
+
+    process.exit(0);
+  };
+
   const shutdown = async (signal: string) => {
     console.log(`\n\n🛑 Monitoring stopped (${signal})`);
     clearInterval(intervalId);
@@ -537,6 +657,8 @@ const monitorTrackedWallet = async (
 
     process.exit(0);
   };
+
+  telegramService.setRestartCallback(restart);
 
   process.on('SIGINT', () => shutdown('SIGINT'));
   process.on('SIGTERM', () => shutdown('SIGTERM'));

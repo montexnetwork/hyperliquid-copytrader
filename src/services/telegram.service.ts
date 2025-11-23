@@ -35,6 +35,7 @@ export class TelegramService {
   private stats: MonitoringStats | null = null;
   private tradingPaused: boolean = false;
   private readonly STATE_FILE = path.resolve(process.cwd(), 'data', 'trading-state.json');
+  private restartCallback: (() => void) | null = null;
 
   constructor(botToken: string | null, chatId: string | null) {
     if (botToken && chatId) {
@@ -98,6 +99,10 @@ export class TelegramService {
 
   updateStats(stats: MonitoringStats): void {
     this.stats = stats;
+  }
+
+  setRestartCallback(callback: () => void): void {
+    this.restartCallback = callback;
   }
 
   private async sendStatus(): Promise<void> {
@@ -398,6 +403,9 @@ export class TelegramService {
             ],
             [
               { text: '📊 Status', callback_data: 'status' }
+            ],
+            [
+              { text: '🔄 Restart Bot', callback_data: 'restart_bot' }
             ]
           ]
         }
@@ -424,6 +432,14 @@ export class TelegramService {
           break;
         case 'status':
           await this.sendStatus();
+          break;
+        case 'restart_bot':
+          await this.sendMessage('🔄 *Restarting Bot*\n\nThe bot will restart now. This may take a few seconds...');
+          if (this.restartCallback) {
+            setTimeout(() => {
+              this.restartCallback!();
+            }, 1000);
+          }
           break;
       }
 
