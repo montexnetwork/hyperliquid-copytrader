@@ -2,11 +2,19 @@ import WebSocket from 'ws';
 
 if (!(WebSocket.prototype as any).dispatchEvent) {
   (WebSocket.prototype as any).dispatchEvent = function(event: any) {
-    const eventName = event.type;
-    if (this.listeners(eventName).length > 0) {
-      this.emit(eventName, event);
+    if (!event || !event.type) {
+      return false;
     }
-    return true;
+
+    const eventName = event.type;
+
+    try {
+      this.emit(eventName, event);
+      return !event.defaultPrevented;
+    } catch (error) {
+      console.error(`Error dispatching WebSocket event '${eventName}':`, error);
+      return false;
+    }
   };
 }
 
