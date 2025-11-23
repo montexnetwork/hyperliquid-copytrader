@@ -286,6 +286,11 @@ const monitorTrackedWallet = async (
       service.getOpenPositions(trackedWallet)
     ]);
 
+    const coins = trackedPositions.map(p => p.coin);
+    if (coins.length > 0) {
+      await service.preCacheTickSizes(coins);
+    }
+
     const oldRatio = balanceRatio;
     const newRatio = calculateBalanceRatio(
       parseFloat(userBalance.accountValue),

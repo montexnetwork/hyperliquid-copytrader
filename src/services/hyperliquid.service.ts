@@ -28,7 +28,7 @@ export class HyperliquidService {
   private telegramService: TelegramService | null = null;
   private readonly MAX_RETRIES = 3;
   private readonly RETRY_DELAY_MS = 100;
-  private readonly BASE_SLIPPAGE_PERCENT = 0.5;
+  private readonly BASE_SLIPPAGE_PERCENT = 1.0;
   private readonly SLIPPAGE_INCREMENT = 0.5;
   private readonly MAX_SLIPPAGE_PERCENT = 3;
 
