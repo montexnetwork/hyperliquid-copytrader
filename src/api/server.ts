@@ -307,6 +307,50 @@ app.get('/api/metrics', (req: Request, res: Response) => {
   }
 });
 
+app.get('/api/health/incidents', (req: Request, res: Response) => {
+  try {
+    const incidentsFilePath = path.join(DATA_DIR, 'health-incidents.jsonl');
+
+    if (!fs.existsSync(incidentsFilePath)) {
+      return res.json({
+        incidents: [],
+        count: 0,
+        message: 'No incidents recorded yet'
+      });
+    }
+
+    const daysParam = req.query.days as string;
+    const numDays = daysParam ? parseInt(daysParam) : 7;
+    const cutoffTime = Date.now() - (numDays * 24 * 60 * 60 * 1000);
+
+    const content = fs.readFileSync(incidentsFilePath, 'utf-8');
+    const lines = content.trim().split('\n').filter(line => line.length > 0);
+    const allIncidents: any[] = [];
+
+    lines.forEach(line => {
+      try {
+        const incident = JSON.parse(line);
+        if (incident.timestamp >= cutoffTime) {
+          allIncidents.push(incident);
+        }
+      } catch (err) {
+        console.error('Error parsing incident line:', err);
+      }
+    });
+
+    allIncidents.sort((a, b) => b.timestamp - a.timestamp);
+
+    res.json({
+      incidents: allIncidents,
+      count: allIncidents.length,
+      days: numDays
+    });
+  } catch (error) {
+    console.error('Error reading incidents:', error);
+    res.status(500).json({ error: 'Failed to read incidents' });
+  }
+});
+
 app.listen(PORT, HOST, () => {
   console.log(`📊 Dashboard server running on ${HOST}:${PORT}`);
   console.log(`📁 Serving snapshots from: ${DATA_DIR}`);

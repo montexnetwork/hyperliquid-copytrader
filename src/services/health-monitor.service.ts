@@ -41,6 +41,16 @@ export interface HealthConfig {
   autoPauseOnErrors: boolean;
 }
 
+export interface HealthIncident {
+  timestamp: number;
+  type: 'websocket' | 'api' | 'orderFailure' | 'fillError' | 'balanceRatio' | 'tradingPaused';
+  severity: 'warning' | 'error' | 'critical';
+  message: string;
+  details?: any;
+  resolved?: boolean;
+  resolvedAt?: number;
+}
+
 export class HealthMonitorService {
   private telegramService: TelegramService | null = null;
   private hyperliquidService: HyperliquidService | null = null;
@@ -56,6 +66,8 @@ export class HealthMonitorService {
   private lastFillTime: number | null = null;
   private isTrading: boolean = true;
   private readonly HEALTH_FILE_PATH = path.resolve(process.cwd(), 'data', 'health-status.json');
+  private readonly INCIDENTS_FILE_PATH = path.resolve(process.cwd(), 'data', 'health-incidents.jsonl');
+  private activeIncidents: Map<string, HealthIncident> = new Map();
 
   private config: HealthConfig;
 
@@ -160,6 +172,33 @@ export class HealthMonitorService {
       fs.writeFileSync(this.HEALTH_FILE_PATH, JSON.stringify(healthMetrics, null, 2), 'utf-8');
     } catch (error) {
       console.error('Failed to write health status file:', error);
+    }
+  }
+
+  private logIncident(incident: HealthIncident): void {
+    try {
+      const dataDir = path.dirname(this.INCIDENTS_FILE_PATH);
+      if (!fs.existsSync(dataDir)) {
+        fs.mkdirSync(dataDir, { recursive: true });
+      }
+
+      const incidentKey = `${incident.type}-${incident.timestamp}`;
+      this.activeIncidents.set(incidentKey, incident);
+
+      fs.appendFileSync(this.INCIDENTS_FILE_PATH, JSON.stringify(incident) + '\n', 'utf-8');
+    } catch (error) {
+      console.error('Failed to log incident:', error);
+    }
+  }
+
+  private resolveIncident(type: string): void {
+    for (const [key, incident] of this.activeIncidents.entries()) {
+      if (incident.type === type && !incident.resolved) {
+        incident.resolved = true;
+        incident.resolvedAt = Date.now();
+        this.logIncident(incident);
+        this.activeIncidents.delete(key);
+      }
     }
   }
 
@@ -307,6 +346,17 @@ export class HealthMonitorService {
 
     console.error(message);
 
+    this.logIncident({
+      timestamp: Date.now(),
+      type: 'orderFailure',
+      severity: 'error',
+      message,
+      details: {
+        failures: this.orderFailureCount,
+        total: this.orderSuccessCount + this.orderFailureCount
+      }
+    });
+
     if (this.telegramService?.isEnabled()) {
       await this.telegramService.sendError(message).catch(() => {});
     }
@@ -321,6 +371,14 @@ export class HealthMonitorService {
 
     console.error(message);
 
+    this.logIncident({
+      timestamp: Date.now(),
+      type: 'fillError',
+      severity: 'error',
+      message,
+      details: { consecutiveErrors: this.consecutiveErrors }
+    });
+
     if (this.telegramService?.isEnabled()) {
       await this.telegramService.sendError(message).catch(() => {});
     }
@@ -330,6 +388,14 @@ export class HealthMonitorService {
     const message = `⚠️ Large balance ratio change detected: ${oldRatio.toFixed(4)} → ${newRatio.toFixed(4)} (${change.toFixed(2)}% change)`;
 
     console.warn(message);
+
+    this.logIncident({
+      timestamp: Date.now(),
+      type: 'balanceRatio',
+      severity: 'warning',
+      message,
+      details: { oldRatio, newRatio, changePercent: change }
+    });
 
     if (this.telegramService?.isEnabled()) {
       await this.telegramService.sendMessage(message).catch(() => {});
@@ -341,6 +407,14 @@ export class HealthMonitorService {
     const message = `🛑 Trading paused: ${reason}`;
 
     console.error(message);
+
+    this.logIncident({
+      timestamp: Date.now(),
+      type: 'tradingPaused',
+      severity: 'critical',
+      message,
+      details: { reason }
+    });
 
     if (this.telegramService?.isEnabled()) {
       this.telegramService.sendError(`${message}\n\nUse /menu to resume trading.`).catch(() => {});
