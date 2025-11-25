@@ -84,23 +84,18 @@ export class FillQueueService {
         continue;
       }
 
-      try {
-        const startTime = Date.now();
-        await this.fillProcessor(item.fill, item.connectionId);
-        const processingTime = Date.now() - startTime;
+      const queueLatency = Date.now() - item.timestamp;
+      if (queueLatency > 1000) {
+        console.warn(`⚠️  High queue latency: ${queueLatency}ms (Connection ${item.connectionId})`);
+      }
 
-        this.metrics.totalProcessed++;
-        this.metrics.lastProcessedAt = Date.now();
-        this.metrics.processingRate = processingTime;
-
-        const queueLatency = Date.now() - item.timestamp;
-        if (queueLatency > 1000) {
-          console.warn(`⚠️  High queue latency: ${queueLatency}ms (Connection ${item.connectionId})`);
-        }
-      } catch (error) {
+      this.fillProcessor(item.fill, item.connectionId).catch(error => {
         const errorMessage = error instanceof Error ? error.message : String(error);
         console.error(`✗ Error processing fill from Connection ${item.connectionId}: ${errorMessage}`);
-      }
+      });
+
+      this.metrics.totalProcessed++;
+      this.metrics.lastProcessedAt = Date.now();
     }
 
     this.isProcessing = false;
