@@ -83,6 +83,16 @@ export class TelegramService {
       const action = query.data
       await this.bot!.answerCallbackQuery(query.id)
 
+      if (action?.startsWith('close_')) {
+        const parts = action.split('_')
+        if (parts.length === 3) {
+          const coin = parts[1]
+          const percent = parseInt(parts[2])
+          await this.closePositionPercent(coin, percent)
+          return
+        }
+      }
+
       switch (action) {
         case 'pause_trading':
           this.tradingPaused = true
@@ -99,10 +109,6 @@ export class TelegramService {
           setTimeout(() => process.exit(0), 1000)
           break
 
-        case 'close_profitable':
-          await this.closeMostProfitablePosition()
-          break
-
         case 'status':
           await this.sendStatus()
           break
@@ -117,46 +123,58 @@ export class TelegramService {
       ? { text: '▶️ Resume Trading', callback_data: 'resume_trading' }
       : { text: '⏸️ Pause Trading', callback_data: 'pause_trading' }
 
-    const keyboard = {
-      inline_keyboard: [
-        [tradingButton],
-        [{ text: '📊 Status', callback_data: 'status' }],
-        [{ text: '💰 Close Most Profitable', callback_data: 'close_profitable' }],
-        [{ text: '🔄 Restart Bot', callback_data: 'restart_bot' }]
-      ]
+    const keyboard: TelegramBot.InlineKeyboardButton[][] = [
+      [tradingButton],
+      [{ text: '📊 Status', callback_data: 'status' }],
+      [{ text: '🔄 Restart Bot', callback_data: 'restart_bot' }]
+    ]
+
+    let message = '🎛️ *Control Panel*'
+
+    if (this.lastSnapshot && this.lastSnapshot.userPositions.length > 0) {
+      message += '\n\n━━━━━━━━━━━━━━━━━━━━━\n📈 *Close Positions:*'
+
+      for (const pos of this.lastSnapshot.userPositions) {
+        const pnlSign = pos.unrealizedPnl >= 0 ? '+' : ''
+        message += `\n\n*${pos.coin}* ${pos.side.toUpperCase()} ${pnlSign}$${pos.unrealizedPnl.toFixed(2)}`
+
+        keyboard.push([
+          { text: '100%', callback_data: `close_${pos.coin}_100` },
+          { text: '50%', callback_data: `close_${pos.coin}_50` },
+          { text: '25%', callback_data: `close_${pos.coin}_25` }
+        ])
+      }
     }
 
-    await this.bot.sendMessage(this.chatId, '🎛️ *Control Panel*', {
+    await this.bot.sendMessage(this.chatId, message, {
       parse_mode: 'Markdown',
-      reply_markup: keyboard
+      reply_markup: { inline_keyboard: keyboard }
     })
   }
 
-  private async closeMostProfitablePosition(): Promise<void> {
+  private async closePositionPercent(coin: string, percent: number): Promise<void> {
     if (!this.lastSnapshot || !this.hyperliquidService) {
       await this.sendMessage('⚠️ No data or service available')
       return
     }
 
-    const positions = this.lastSnapshot.userPositions
-    if (positions.length === 0) {
-      await this.sendMessage('⚠️ No open positions')
-      return
-    }
-
-    const mostProfitable = positions.reduce((best, pos) =>
-      pos.unrealizedPnl > best.unrealizedPnl ? pos : best
-    )
-
-    if (mostProfitable.unrealizedPnl <= 0) {
-      await this.sendMessage('⚠️ No profitable positions to close')
+    const position = this.lastSnapshot.userPositions.find(p => p.coin === coin)
+    if (!position) {
+      await this.sendMessage(`⚠️ No ${coin} position found`)
       return
     }
 
     try {
-      await this.sendMessage(`🔄 Closing ${mostProfitable.coin} (+$${mostProfitable.unrealizedPnl.toFixed(2)})...`)
-      await this.hyperliquidService.closePosition(mostProfitable.coin, mostProfitable.markPrice)
-      await this.sendMessage(`✅ Closed ${mostProfitable.coin} position`)
+      const closeSize = Math.abs(position.size) * (percent / 100)
+      await this.sendMessage(`🔄 Closing ${percent}% of ${coin}...`)
+
+      if (percent === 100) {
+        await this.hyperliquidService.closePosition(coin, position.markPrice)
+      } else {
+        await this.hyperliquidService.reducePosition(coin, closeSize, position.markPrice)
+      }
+
+      await this.sendMessage(`✅ Closed ${percent}% of ${coin}`)
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error)
       await this.sendMessage(`❌ Failed to close: ${msg}`)
@@ -272,6 +290,44 @@ export class TelegramService {
   async sendError(error: string): Promise<void> {
     if (!this.enabled) return
     await this.sendMessage(`❌ *Error*\n\n${error}`)
+  }
+
+  async sendTotalPnlAlert(pnl: number, pnlPercent: number): Promise<void> {
+    if (!this.enabled) return
+    const sign = pnl >= 0 ? '+' : ''
+    await this.sendMessage(
+      `⚠️ *High Unrealized PnL*\n\n` +
+      `Total PnL: ${sign}$${pnl.toFixed(2)} (${pnlPercent.toFixed(1)}% of balance)`
+    )
+  }
+
+  async sendLargePositionAlert(coin: string, sizePercent: number, notionalValue: number): Promise<void> {
+    if (!this.enabled) return
+    await this.sendMessage(
+      `⚠️ *Large Position Size*\n\n` +
+      `${coin} position is ${sizePercent.toFixed(1)}% of account value\n` +
+      `Size: $${notionalValue.toLocaleString('en-US', { maximumFractionDigits: 0 })}`
+    )
+  }
+
+  async sendPositionPnlAlert(coin: string, pnl: number, pnlPercent: number): Promise<void> {
+    if (!this.enabled) return
+    const sign = pnl >= 0 ? '+' : ''
+    await this.sendMessage(
+      `⚠️ *High Position PnL*\n\n` +
+      `${coin} position PnL: ${sign}$${pnl.toFixed(2)} (${pnlPercent.toFixed(1)}% of balance)`
+    )
+  }
+
+  async sendNoFillsAlert(minutesSinceLastFill: number, lastFillTime: number): Promise<void> {
+    if (!this.enabled) return
+    const lastFillDate = new Date(lastFillTime)
+    const timeStr = lastFillDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+    await this.sendMessage(
+      `⚠️ *No Recent Fills*\n\n` +
+      `No fills received for ${minutesSinceLastFill} minutes\n` +
+      `Last fill: ${timeStr}`
+    )
   }
 
   private formatAddress(address: string): string {

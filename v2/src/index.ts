@@ -9,6 +9,7 @@ import { DriftDetectorService } from '@/services/drift-detector.service'
 import { SyncService } from '@/services/sync.service'
 import { TelegramService } from '@/services/telegram.service'
 import { LoggerService } from '@/services/logger.service'
+import { RiskMonitorService } from '@/services/risk-monitor.service'
 import { startServer } from '@/api/server'
 
 async function main(): Promise<void> {
@@ -28,7 +29,9 @@ async function main(): Promise<void> {
   const telegramService = new TelegramService()
   telegramService.setHyperliquidService(hyperliquidService)
   const loggerService = new LoggerService()
+  const riskMonitor = new RiskMonitorService(telegramService)
   const fillQueue = new FillQueueService()
+  fillQueue.setRiskMonitor(riskMonitor)
   const fillProcessor = new FillProcessorService(hyperliquidService, loggerService, telegramService)
   const webSocketPool = new WebSocketPoolService(fillQueue)
   const driftDetector = new DriftDetectorService()
@@ -44,7 +47,8 @@ async function main(): Promise<void> {
     syncService,
     telegramService,
     loggerService,
-    fillProcessor
+    fillProcessor,
+    riskMonitor
   )
 
   fillQueue.setFillProcessor((fill, connectionId) => fillProcessor.processFill(fill, connectionId))

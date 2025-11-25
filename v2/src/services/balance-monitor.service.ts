@@ -5,6 +5,7 @@ import { SyncService } from './sync.service'
 import { TelegramService } from './telegram.service'
 import { LoggerService } from './logger.service'
 import { FillProcessorService } from './fill-processor.service'
+import { RiskMonitorService } from './risk-monitor.service'
 import { calculateBalanceRatio } from '@/utils/scaling.utils'
 import { config } from '@/config'
 
@@ -27,7 +28,8 @@ export class BalanceMonitorService {
     private syncService: SyncService,
     private telegramService: TelegramService,
     private loggerService: LoggerService,
-    private fillProcessor: FillProcessorService
+    private fillProcessor: FillProcessorService,
+    private riskMonitor: RiskMonitorService
   ) {}
 
   start(): void {
@@ -69,6 +71,7 @@ export class BalanceMonitorService {
 
       this.loggerService.logSnapshot(snapshot)
       this.telegramService.updateSnapshot(snapshot)
+      await this.riskMonitor.checkRisks(snapshot)
 
       console.log(`\n📊 Balance Check | Tracked: $${trackedValue.toFixed(2)} (${trackedPositions.length} pos) | User: $${userValue.toFixed(2)} (${userPositions.length} pos) | Ratio: ${balanceRatio.toFixed(4)}`)
 
