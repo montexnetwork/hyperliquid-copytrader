@@ -39,12 +39,14 @@ export class LoggerService {
       tracked: {
         accountValue: parseFloat(snapshot.trackedBalance.accountValue),
         withdrawable: parseFloat(snapshot.trackedBalance.withdrawable),
-        positionCount: snapshot.trackedPositions.length
+        positionCount: snapshot.trackedPositions.length,
+        positions: snapshot.trackedPositions
       },
       user: {
         accountValue: parseFloat(snapshot.userBalance.accountValue),
         withdrawable: parseFloat(snapshot.userBalance.withdrawable),
-        positionCount: snapshot.userPositions.length
+        positionCount: snapshot.userPositions.length,
+        positions: snapshot.userPositions
       },
       balanceRatio: snapshot.balanceRatio
     }
