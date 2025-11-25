@@ -72,33 +72,55 @@ export class TelegramService {
       ? `${Math.floor(uptimeMinutes / 60)}h ${uptimeMinutes % 60}m`
       : `${uptimeMinutes}m`
 
-    const trackedValue = parseFloat(s.trackedBalance.accountValue)
-    const userValue = parseFloat(s.userBalance.accountValue)
+    const userValue = parseFloat(s.userBalance.withdrawable)
 
-    let message = '📊 *Account Status*\n\n'
-    message += '*TRACKED*\n'
-    message += `Balance: $${trackedValue.toFixed(2)}\n`
-    message += `Positions: ${s.trackedPositions.length}\n\n`
-    message += '*USER*\n'
-    message += `Balance: $${userValue.toFixed(2)}\n`
-    message += `Positions: ${s.userPositions.length}\n`
-    message += `Ratio: ${s.balanceRatio.toFixed(4)}\n\n`
+    let message = '📊 *Status*\n\n'
+    message += `💰 Balance: $${userValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\n\n`
 
     if (s.userPositions.length > 0) {
-      message += '*POSITIONS*\n'
+      message += '📈 *Positions:*\n'
       for (const pos of s.userPositions) {
-        message += this.formatPosition(pos)
+        message += this.formatPositionDetailed(pos, s)
       }
+    } else {
+      message += '_No open positions_\n'
     }
 
-    message += `\n*Uptime:* ${uptimeStr}`
+    message += `\n⏱ Uptime: ${uptimeStr}`
 
     await this.sendMessage(message)
   }
 
-  private formatPosition(pos: Position): string {
-    const pnlSign = pos.unrealizedPnl >= 0 ? '+' : ''
-    return `• ${pos.coin} ${pos.side.toUpperCase()} ${pos.leverage}x | ${pnlSign}$${pos.unrealizedPnl.toFixed(2)}\n`
+  private formatPositionDetailed(pos: Position, snapshot: MonitorSnapshot): string {
+    const userValue = parseFloat(snapshot.userBalance.accountValue)
+    const sizePercent = (pos.notionalValue / userValue) * 100
+
+    const trackedPos = snapshot.trackedPositions.find(p => p.coin === pos.coin)
+
+    let sizeDiffStr = 'N/A'
+    let entryDiffStr = 'N/A'
+
+    if (trackedPos) {
+      const trackedValue = parseFloat(snapshot.trackedBalance.accountValue)
+      const expectedSize = (trackedPos.notionalValue / trackedValue) * userValue
+      const sizeDiff = ((pos.notionalValue - expectedSize) / expectedSize) * 100
+      const sizeDiffSign = sizeDiff >= 0 ? '+' : ''
+      sizeDiffStr = `${sizeDiffSign}${sizeDiff.toFixed(1)}%`
+
+      const entryDiff = ((pos.entryPrice - trackedPos.entryPrice) / trackedPos.entryPrice) * 100
+      const isFavorable = pos.side === 'long' ? entryDiff < 0 : entryDiff > 0
+      const entryDiffSign = entryDiff >= 0 ? '+' : ''
+      const favorableIcon = isFavorable ? '✓' : '✗'
+      entryDiffStr = `${entryDiffSign}${entryDiff.toFixed(2)}% ${favorableIcon}`
+    }
+
+    let result = `┌ *${pos.coin}* ${pos.side.toUpperCase()}\n`
+    result += `├ Size: $${pos.notionalValue.toLocaleString('en-US', { maximumFractionDigits: 0 })} (${sizePercent.toFixed(1)}%)\n`
+    result += `├ Size diff: ${sizeDiffStr}\n`
+    result += `├ Entry: $${pos.entryPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\n`
+    result += `└ Entry diff: ${entryDiffStr}\n\n`
+
+    return result
   }
 
   async sendDriftAlert(driftReport: DriftReport): Promise<void> {
