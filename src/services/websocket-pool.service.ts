@@ -104,15 +104,15 @@ export class WebSocketPoolService {
     const now = Date.now();
 
     // Staggered thresholds to prevent simultaneous reconnects
-    // Using intervals that don't share common multiples to avoid collisions
-    // Connection 1: 70s (1m 10s) - fast detection
-    // Connection 2: 3m (180s) - medium detection
-    // Connection 3: 5m (300s) - conservative detection
-    // LCM(70, 300) = 2100s (35 minutes) before first overlap
+    // Using prime numbers to avoid reconnection collisions
+    // Connection 1: 71s (1m 11s) - fast detection
+    // Connection 2: 181s (3m 1s) - medium detection
+    // Connection 3: 307s (5m 7s) - conservative detection
+    // LCM(71, 181, 307) = 3,943,837s (45.6 days) before first overlap
     const thresholds = [
-      70 * 1000,          // Connection 1: 70 seconds (1m 10s)
-      3 * 60 * 1000,      // Connection 2: 180 seconds (3 minutes)
-      5 * 60 * 1000       // Connection 3: 300 seconds (5 minutes)
+      71 * 1000,          // Connection 1: 71 seconds (1m 11s)
+      181 * 1000,         // Connection 2: 181 seconds (3m 1s)
+      307 * 1000          // Connection 3: 307 seconds (5m 7s)
     ];
 
     for (const connection of this.connections) {
