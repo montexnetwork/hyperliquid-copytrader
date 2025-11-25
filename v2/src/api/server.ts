@@ -48,12 +48,12 @@ app.get('/api/snapshots', (req: Request, res: Response) => {
 
 app.get('/api/trades', (req: Request, res: Response) => {
   try {
-    const limitParam = req.query.limit as string
-    const limit = limitParam ? parseInt(limitParam) : 100
-    const filePath = path.join(DATA_DIR, 'trades.jsonl')
+    const dateParam = req.query.date as string
+    const targetDate = dateParam || new Date().toISOString().split('T')[0]
+    const filePath = path.join(DATA_DIR, `trades-${targetDate}.jsonl`)
 
     if (!fs.existsSync(filePath)) {
-      return res.json({ trades: [], count: 0 })
+      return res.json({ trades: [], count: 0, date: targetDate })
     }
 
     const content = fs.readFileSync(filePath, 'utf-8')
@@ -61,11 +61,10 @@ app.get('/api/trades', (req: Request, res: Response) => {
       .trim()
       .split('\n')
       .filter(line => line)
-      .slice(-limit)
       .map(line => JSON.parse(line))
-      .sort((a, b) => b.timestamp - a.timestamp)
+      .sort((a, b) => a.timestamp - b.timestamp)
 
-    res.json({ trades, count: trades.length })
+    res.json({ trades, count: trades.length, date: targetDate })
   } catch (error) {
     res.status(500).json({ error: 'Failed to read trades' })
   }

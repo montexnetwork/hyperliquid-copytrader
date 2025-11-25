@@ -453,6 +453,7 @@
 
   <script>
     let filteredSnapshots = [];
+    let allTrades = [];
     let dailySummaryData = [];
     let selectedDate = new Date().toISOString().split('T')[0];
 
@@ -517,12 +518,14 @@
     async function fetchSnapshots(date = null) {
       try {
         const targetDate = date || selectedDate;
-        const [snapshotsRes, summaryRes] = await Promise.all([
+        const [snapshotsRes, tradesRes, summaryRes] = await Promise.all([
           fetch(`/api/snapshots?date=${targetDate}`),
+          fetch(`/api/trades?date=${targetDate}`),
           fetch('/api/daily-summary?days=10')
         ]);
 
         const snapshotsData = await snapshotsRes.json();
+        const tradesData = await tradesRes.json();
         const summaryData = await summaryRes.json();
 
         if (!snapshotsRes.ok) {
@@ -530,6 +533,7 @@
         }
 
         filteredSnapshots = snapshotsData.snapshots;
+        allTrades = tradesData.trades || [];
         dailySummaryData = summaryData.days || [];
 
         if (filteredSnapshots.length === 0) {
@@ -743,52 +747,10 @@
     }
 
     function renderRealizedPnlChart() {
-      const realizedPnlBySymbol = {};
-      let prevPositions = {};
-
-      filteredSnapshots.forEach((snapshot, idx) => {
-        const timestamp = new Date(snapshot.timestamp);
-        const currentPositions = {};
-
-        (snapshot.user.positions || []).forEach(pos => {
-          currentPositions[pos.coin] = {
-            unrealizedPnl: pos.unrealizedPnl || 0,
-            side: pos.side
-          };
-        });
-
-        if (idx > 0) {
-          Object.keys(prevPositions).forEach(coin => {
-            if (!currentPositions[coin]) {
-              const realizedPnl = prevPositions[coin].unrealizedPnl;
-              if (!realizedPnlBySymbol[coin]) {
-                realizedPnlBySymbol[coin] = { x: [], y: [], cumulative: 0 };
-              }
-              realizedPnlBySymbol[coin].cumulative += realizedPnl;
-              realizedPnlBySymbol[coin].x.push(timestamp);
-              realizedPnlBySymbol[coin].y.push(realizedPnlBySymbol[coin].cumulative);
-            }
-          });
-        }
-
-        prevPositions = currentPositions;
-      });
-
-      const datasets = Object.entries(realizedPnlBySymbol).map(([coin, data]) => ({
-        label: coin,
-        data: data.x.map((x, i) => ({ x, y: data.y[i] })),
-        borderColor: getSymbolColor(coin),
-        backgroundColor: getSymbolColor(coin),
-        borderWidth: 2,
-        tension: 0.1,
-        fill: false,
-        pointRadius: 0
-      }));
-
       if (chartInstances['realized-pnl-chart']) chartInstances['realized-pnl-chart'].destroy();
       const ctx = document.getElementById('realized-pnl-chart').getContext('2d');
 
-      if (datasets.length === 0) {
+      if (allTrades.length === 0) {
         chartInstances['realized-pnl-chart'] = new Chart(ctx, {
           type: 'line',
           data: { datasets: [] },
@@ -815,7 +777,7 @@
               ctx.textBaseline = 'middle';
               ctx.font = '16px sans-serif';
               ctx.fillStyle = '#657786';
-              ctx.fillText('No closed positions yet', width / 2, height / 2);
+              ctx.fillText('No closed trades', width / 2, height / 2);
               ctx.restore();
             }
           }]
@@ -823,11 +785,35 @@
         return;
       }
 
+      const coinData = {};
+
+      allTrades
+        .sort((a, b) => a.timestamp - b.timestamp)
+        .forEach(trade => {
+          if (!coinData[trade.coin]) {
+            coinData[trade.coin] = { x: [], y: [], cumulative: 0 };
+          }
+          coinData[trade.coin].cumulative += trade.realizedPnl;
+          coinData[trade.coin].x.push(new Date(trade.timestamp));
+          coinData[trade.coin].y.push(coinData[trade.coin].cumulative);
+        });
+
+      const datasets = Object.entries(coinData).map(([coin, data]) => ({
+        label: coin,
+        data: data.x.map((x, i) => ({ x, y: data.y[i] })),
+        borderColor: getSymbolColor(coin),
+        backgroundColor: getSymbolColor(coin),
+        borderWidth: 2,
+        tension: 0.1,
+        fill: false,
+        pointRadius: 0
+      }));
+
       chartInstances['realized-pnl-chart'] = new Chart(ctx, {
         ...getChartConfig('line', {
           legend: { position: 'top', align: 'start' },
           yScale: {
-            title: { display: true, text: 'Cumulative Realized PnL ($)', color: '#8899a6' },
+            title: { display: true, text: 'Cumulative Realized PNL ($)', color: '#8899a6' },
             ticks: { color: '#8899a6', font: { size: 11 }, callback: v => '$' + v.toFixed(2) }
           }
         }),
