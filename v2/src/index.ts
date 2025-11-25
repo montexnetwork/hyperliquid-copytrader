@@ -26,9 +26,10 @@ async function main(): Promise<void> {
   await hyperliquidService.initialize()
 
   const telegramService = new TelegramService()
+  telegramService.setHyperliquidService(hyperliquidService)
   const loggerService = new LoggerService()
   const fillQueue = new FillQueueService()
-  const fillProcessor = new FillProcessorService(hyperliquidService, loggerService)
+  const fillProcessor = new FillProcessorService(hyperliquidService, loggerService, telegramService)
   const webSocketPool = new WebSocketPoolService(fillQueue)
   const driftDetector = new DriftDetectorService()
   const syncService = new SyncService(

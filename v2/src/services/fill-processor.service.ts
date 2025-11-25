@@ -1,6 +1,7 @@
 import { UserFillData, TradeAction } from '@/models'
 import { HyperliquidService } from './hyperliquid.service'
 import { LoggerService } from './logger.service'
+import { TelegramService } from './telegram.service'
 import { scaleSize, formatScaledSize } from '@/utils/scaling.utils'
 import { config } from '@/config'
 
@@ -9,7 +10,8 @@ export class FillProcessorService {
 
   constructor(
     private hyperliquidService: HyperliquidService,
-    private loggerService: LoggerService
+    private loggerService: LoggerService,
+    private telegramService: TelegramService
   ) {}
 
   setBalanceRatio(ratio: number): void {
@@ -29,6 +31,11 @@ export class FillProcessorService {
 
     if (!this.hyperliquidService.canExecuteTrades()) {
       console.log('   ⚠️ Trading disabled, skipping execution')
+      return
+    }
+
+    if (this.telegramService.isTradingPaused()) {
+      console.log('   ⏸️ Trading paused via Telegram, skipping execution')
       return
     }
 

@@ -2,6 +2,7 @@ import TelegramBot from 'node-telegram-bot-api'
 import { DriftReport, Position } from '@/models'
 import { config } from '@/config'
 import { MonitorSnapshot } from './balance-monitor.service'
+import { HyperliquidService } from './hyperliquid.service'
 
 export class TelegramService {
   private bot: TelegramBot | null = null
@@ -9,6 +10,8 @@ export class TelegramService {
   private enabled: boolean = false
   private lastSnapshot: MonitorSnapshot | null = null
   private startTime: number = Date.now()
+  private tradingPaused: boolean = false
+  private hyperliquidService: HyperliquidService | null = null
 
   constructor() {
     if (config.telegramBotToken && config.telegramChatId) {
@@ -16,8 +19,17 @@ export class TelegramService {
       this.chatId = config.telegramChatId
       this.enabled = true
       this.setupCommands()
+      this.setupCallbackHandlers()
       this.setupErrorHandlers()
     }
+  }
+
+  setHyperliquidService(service: HyperliquidService): void {
+    this.hyperliquidService = service
+  }
+
+  isTradingPaused(): boolean {
+    return this.tradingPaused
   }
 
   private setupErrorHandlers(): void {
@@ -47,12 +59,108 @@ export class TelegramService {
           '🤖 *Copyscalper v2*\n\n' +
           'Commands:\n' +
           '/status - View account status\n' +
+          '/menu - Control panel\n' +
           '/start - Show this help\n\n' +
           'You will receive alerts when:\n' +
           '• Position drift is detected'
         this.sendMessage(message)
       }
     })
+
+    this.bot.onText(/\/menu/, (msg) => {
+      if (msg.chat.id.toString() === this.chatId) {
+        this.sendMenu()
+      }
+    })
+  }
+
+  private setupCallbackHandlers(): void {
+    if (!this.bot) return
+
+    this.bot.on('callback_query', async (query) => {
+      if (!query.message || query.message.chat.id.toString() !== this.chatId) return
+
+      const action = query.data
+      await this.bot!.answerCallbackQuery(query.id)
+
+      switch (action) {
+        case 'pause_trading':
+          this.tradingPaused = true
+          await this.sendMessage('⏸️ Trading *paused*. New trades will be skipped.')
+          break
+
+        case 'resume_trading':
+          this.tradingPaused = false
+          await this.sendMessage('▶️ Trading *resumed*. Back to normal operation.')
+          break
+
+        case 'restart_bot':
+          await this.sendMessage('🔄 Restarting bot...')
+          setTimeout(() => process.exit(0), 1000)
+          break
+
+        case 'close_profitable':
+          await this.closeMostProfitablePosition()
+          break
+
+        case 'status':
+          await this.sendStatus()
+          break
+      }
+    })
+  }
+
+  private async sendMenu(): Promise<void> {
+    if (!this.bot || !this.chatId) return
+
+    const tradingButton = this.tradingPaused
+      ? { text: '▶️ Resume Trading', callback_data: 'resume_trading' }
+      : { text: '⏸️ Pause Trading', callback_data: 'pause_trading' }
+
+    const keyboard = {
+      inline_keyboard: [
+        [tradingButton],
+        [{ text: '📊 Status', callback_data: 'status' }],
+        [{ text: '💰 Close Most Profitable', callback_data: 'close_profitable' }],
+        [{ text: '🔄 Restart Bot', callback_data: 'restart_bot' }]
+      ]
+    }
+
+    await this.bot.sendMessage(this.chatId, '🎛️ *Control Panel*', {
+      parse_mode: 'Markdown',
+      reply_markup: keyboard
+    })
+  }
+
+  private async closeMostProfitablePosition(): Promise<void> {
+    if (!this.lastSnapshot || !this.hyperliquidService) {
+      await this.sendMessage('⚠️ No data or service available')
+      return
+    }
+
+    const positions = this.lastSnapshot.userPositions
+    if (positions.length === 0) {
+      await this.sendMessage('⚠️ No open positions')
+      return
+    }
+
+    const mostProfitable = positions.reduce((best, pos) =>
+      pos.unrealizedPnl > best.unrealizedPnl ? pos : best
+    )
+
+    if (mostProfitable.unrealizedPnl <= 0) {
+      await this.sendMessage('⚠️ No profitable positions to close')
+      return
+    }
+
+    try {
+      await this.sendMessage(`🔄 Closing ${mostProfitable.coin} (+$${mostProfitable.unrealizedPnl.toFixed(2)})...`)
+      await this.hyperliquidService.closePosition(mostProfitable.coin, mostProfitable.markPrice)
+      await this.sendMessage(`✅ Closed ${mostProfitable.coin} position`)
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error)
+      await this.sendMessage(`❌ Failed to close: ${msg}`)
+    }
   }
 
   updateSnapshot(snapshot: MonitorSnapshot): void {
