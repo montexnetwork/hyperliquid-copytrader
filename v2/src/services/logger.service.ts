@@ -1,0 +1,106 @@
+import * as fs from 'fs'
+import * as path from 'path'
+import { TradeAction } from '@/models'
+import { MonitorSnapshot } from './balance-monitor.service'
+
+export interface TradeLogEntry {
+  coin: string
+  action: TradeAction
+  side: 'long' | 'short'
+  size: number
+  price: number
+  timestamp: number
+  executionMs: number
+  connectionId: number
+  syncReason?: string
+}
+
+export class LoggerService {
+  private readonly dataDir: string
+
+  constructor() {
+    this.dataDir = path.resolve(process.cwd(), 'data')
+    this.ensureDataDir()
+  }
+
+  private ensureDataDir(): void {
+    if (!fs.existsSync(this.dataDir)) {
+      fs.mkdirSync(this.dataDir, { recursive: true })
+    }
+  }
+
+  logSnapshot(snapshot: MonitorSnapshot): void {
+    const date = new Date().toISOString().split('T')[0]
+    const filePath = path.join(this.dataDir, `snapshots-${date}.jsonl`)
+
+    const entry = {
+      timestamp: snapshot.timestamp,
+      date: new Date(snapshot.timestamp).toISOString(),
+      tracked: {
+        accountValue: parseFloat(snapshot.trackedBalance.accountValue),
+        withdrawable: parseFloat(snapshot.trackedBalance.withdrawable),
+        positionCount: snapshot.trackedPositions.length
+      },
+      user: {
+        accountValue: parseFloat(snapshot.userBalance.accountValue),
+        withdrawable: parseFloat(snapshot.userBalance.withdrawable),
+        positionCount: snapshot.userPositions.length
+      },
+      balanceRatio: snapshot.balanceRatio
+    }
+
+    this.appendLine(filePath, JSON.stringify(entry))
+  }
+
+  logTrade(entry: TradeLogEntry): void {
+    const filePath = path.join(this.dataDir, 'trades.jsonl')
+    this.appendLine(filePath, JSON.stringify({
+      ...entry,
+      date: new Date(entry.timestamp).toISOString()
+    }))
+  }
+
+  private appendLine(filePath: string, line: string): void {
+    try {
+      fs.appendFileSync(filePath, line + '\n')
+    } catch (error) {
+      console.error('Failed to write log:', error instanceof Error ? error.message : error)
+    }
+  }
+
+  readSnapshots(date?: string): Array<Record<string, unknown>> {
+    const targetDate = date || new Date().toISOString().split('T')[0]
+    const filePath = path.join(this.dataDir, `snapshots-${targetDate}.jsonl`)
+
+    if (!fs.existsSync(filePath)) return []
+
+    try {
+      const content = fs.readFileSync(filePath, 'utf-8')
+      return content
+        .trim()
+        .split('\n')
+        .filter(line => line)
+        .map(line => JSON.parse(line))
+    } catch (error) {
+      console.error('Failed to read snapshots:', error instanceof Error ? error.message : error)
+      return []
+    }
+  }
+
+  readTrades(limit: number = 100): TradeLogEntry[] {
+    const filePath = path.join(this.dataDir, 'trades.jsonl')
+
+    if (!fs.existsSync(filePath)) return []
+
+    try {
+      const content = fs.readFileSync(filePath, 'utf-8')
+      const lines = content.trim().split('\n').filter(line => line)
+      return lines
+        .slice(-limit)
+        .map(line => JSON.parse(line))
+    } catch (error) {
+      console.error('Failed to read trades:', error instanceof Error ? error.message : error)
+      return []
+    }
+  }
+}

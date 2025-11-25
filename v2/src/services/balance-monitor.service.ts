@@ -1,0 +1,118 @@
+import { Position, Balance } from '@/models'
+import { HyperliquidService } from './hyperliquid.service'
+import { DriftDetectorService } from './drift-detector.service'
+import { SyncService } from './sync.service'
+import { TelegramService } from './telegram.service'
+import { LoggerService } from './logger.service'
+import { FillProcessorService } from './fill-processor.service'
+import { calculateBalanceRatio } from '@/utils/scaling.utils'
+import { config } from '@/config'
+
+export interface MonitorSnapshot {
+  trackedBalance: Balance
+  trackedPositions: Position[]
+  userBalance: Balance
+  userPositions: Position[]
+  balanceRatio: number
+  timestamp: number
+}
+
+export class BalanceMonitorService {
+  private interval: NodeJS.Timeout | null = null
+  private readonly POLL_INTERVAL_MS = 60000
+
+  constructor(
+    private hyperliquidService: HyperliquidService,
+    private driftDetector: DriftDetectorService,
+    private syncService: SyncService,
+    private telegramService: TelegramService,
+    private loggerService: LoggerService,
+    private fillProcessor: FillProcessorService
+  ) {}
+
+  start(): void {
+    console.log('📊 Starting balance monitor (60s interval)...')
+    this.poll()
+    this.interval = setInterval(() => this.poll(), this.POLL_INTERVAL_MS)
+  }
+
+  stop(): void {
+    if (this.interval) {
+      clearInterval(this.interval)
+      this.interval = null
+    }
+  }
+
+  private async poll(): Promise<void> {
+    try {
+      const [trackedBalance, trackedPositions, userBalance, userPositions] = await Promise.all([
+        this.hyperliquidService.getAccountBalance(config.trackedWallet),
+        this.hyperliquidService.getOpenPositions(config.trackedWallet),
+        this.hyperliquidService.getAccountBalance(config.userWallet),
+        this.hyperliquidService.getOpenPositions(config.userWallet)
+      ])
+
+      const trackedValue = parseFloat(trackedBalance.accountValue)
+      const userValue = parseFloat(userBalance.accountValue)
+      const balanceRatio = calculateBalanceRatio(userValue, trackedValue)
+
+      this.fillProcessor.setBalanceRatio(balanceRatio)
+
+      const snapshot: MonitorSnapshot = {
+        trackedBalance,
+        trackedPositions,
+        userBalance,
+        userPositions,
+        balanceRatio,
+        timestamp: Date.now()
+      }
+
+      this.loggerService.logSnapshot(snapshot)
+
+      console.log(`\n📊 Balance Check | Tracked: $${trackedValue.toFixed(2)} (${trackedPositions.length} pos) | User: $${userValue.toFixed(2)} (${userPositions.length} pos) | Ratio: ${balanceRatio.toFixed(4)}`)
+
+      const driftReport = this.driftDetector.detect(trackedPositions, userPositions, balanceRatio)
+
+      if (driftReport.hasDrift) {
+        console.log(`\n⚠️  Drift detected: ${driftReport.drifts.length} position(s)`)
+
+        for (const drift of driftReport.drifts) {
+          const favorableStr = drift.isFavorable ? '✓ favorable' : '✗ unfavorable'
+          console.log(`   - ${drift.coin}: ${drift.driftType} (${favorableStr}, ${drift.sizeDiffPercent.toFixed(1)}% diff)`)
+        }
+
+        await this.telegramService.sendDriftAlert(driftReport)
+        await this.syncService.syncFavorable(driftReport)
+      }
+    } catch (error) {
+      console.error('❌ Balance monitor error:', error instanceof Error ? error.message : error)
+    }
+  }
+
+  async getSnapshot(): Promise<MonitorSnapshot | null> {
+    try {
+      const [trackedBalance, trackedPositions, userBalance, userPositions] = await Promise.all([
+        this.hyperliquidService.getAccountBalance(config.trackedWallet),
+        this.hyperliquidService.getOpenPositions(config.trackedWallet),
+        this.hyperliquidService.getAccountBalance(config.userWallet),
+        this.hyperliquidService.getOpenPositions(config.userWallet)
+      ])
+
+      const trackedValue = parseFloat(trackedBalance.accountValue)
+      const userValue = parseFloat(userBalance.accountValue)
+      const balanceRatio = calculateBalanceRatio(userValue, trackedValue)
+
+      return {
+        trackedBalance,
+        trackedPositions,
+        userBalance,
+        userPositions,
+        balanceRatio,
+        timestamp: Date.now()
+      }
+    } catch (error) {
+      console.error('Failed to get snapshot:', error instanceof Error ? error.message : error)
+      return null
+    }
+  }
+}
