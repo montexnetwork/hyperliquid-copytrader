@@ -90,10 +90,12 @@ export class DriftDetectorService {
     currentPrice: number,
     entryPrice: number
   ): boolean {
+    const MIN_IMPROVEMENT = 0.01
+
     if (side === 'long') {
-      return currentPrice < entryPrice
+      return currentPrice <= entryPrice * (1 - MIN_IMPROVEMENT)
     } else {
-      return currentPrice > entryPrice
+      return currentPrice >= entryPrice * (1 + MIN_IMPROVEMENT)
     }
   }
 
