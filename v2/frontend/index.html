@@ -690,7 +690,7 @@
         const trackedBalance = snapshot.tracked.accountValue;
         const userBalance = snapshot.user.accountValue;
 
-        snapshot.tracked.positions.forEach(pos => {
+        (snapshot.tracked.positions || []).forEach(pos => {
           const key = `${pos.coin} (Tracked)`;
           if (!coinData[key]) coinData[key] = { x: [], y: [], type: 'tracked' };
           const pctOfBalance = (pos.notionalValue / trackedBalance) * 100;
@@ -698,7 +698,7 @@
           coinData[key].y.push(pctOfBalance);
         });
 
-        snapshot.user.positions.forEach(pos => {
+        (snapshot.user.positions || []).forEach(pos => {
           const key = `${pos.coin} (User)`;
           if (!coinData[key]) coinData[key] = { x: [], y: [], type: 'user' };
           const pctOfBalance = (pos.notionalValue / userBalance) * 100;
@@ -793,8 +793,8 @@
         const trackedPositions = {};
         const userPositions = {};
 
-        snapshot.tracked.positions.forEach(pos => { trackedPositions[pos.coin] = pos.entryPrice; });
-        snapshot.user.positions.forEach(pos => { userPositions[pos.coin] = pos.entryPrice; });
+        (snapshot.tracked.positions || []).forEach(pos => { trackedPositions[pos.coin] = pos.entryPrice; });
+        (snapshot.user.positions || []).forEach(pos => { userPositions[pos.coin] = pos.entryPrice; });
 
         Object.keys(trackedPositions).forEach(coin => {
           if (userPositions[coin]) {

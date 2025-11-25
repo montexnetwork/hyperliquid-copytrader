@@ -16,9 +16,7 @@ module.exports = {
       out_file: './logs/out.log',
       time: true,
       restart_delay: 5000,
-      kill_timeout: 10000,
-      wait_ready: true,
-      listen_timeout: 30000
+      kill_timeout: 10000
     },
     {
       name: 'hyperscalper-dashboard',
