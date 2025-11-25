@@ -50,19 +50,36 @@ app.get('/api/trades', (req: Request, res: Response) => {
   try {
     const dateParam = req.query.date as string
     const targetDate = dateParam || new Date().toISOString().split('T')[0]
-    const filePath = path.join(DATA_DIR, `trades-${targetDate}.jsonl`)
 
-    if (!fs.existsSync(filePath)) {
-      return res.json({ trades: [], count: 0, date: targetDate })
+    const dailyFilePath = path.join(DATA_DIR, `trades-${targetDate}.jsonl`)
+    const legacyFilePath = path.join(DATA_DIR, 'trades.jsonl')
+
+    let trades: Array<Record<string, unknown>> = []
+
+    if (fs.existsSync(dailyFilePath)) {
+      const content = fs.readFileSync(dailyFilePath, 'utf-8')
+      trades = content
+        .trim()
+        .split('\n')
+        .filter(line => line)
+        .map(line => JSON.parse(line))
     }
 
-    const content = fs.readFileSync(filePath, 'utf-8')
-    const trades = content
-      .trim()
-      .split('\n')
-      .filter(line => line)
-      .map(line => JSON.parse(line))
-      .sort((a, b) => a.timestamp - b.timestamp)
+    if (trades.length === 0 && fs.existsSync(legacyFilePath)) {
+      const content = fs.readFileSync(legacyFilePath, 'utf-8')
+      const allTrades = content
+        .trim()
+        .split('\n')
+        .filter(line => line)
+        .map(line => JSON.parse(line))
+
+      trades = allTrades.filter(t => {
+        const tradeDate = new Date(t.timestamp).toISOString().split('T')[0]
+        return tradeDate === targetDate
+      })
+    }
+
+    trades.sort((a, b) => (a.timestamp as number) - (b.timestamp as number))
 
     res.json({ trades, count: trades.length, date: targetDate })
   } catch (error) {
