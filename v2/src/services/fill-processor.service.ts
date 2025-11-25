@@ -39,6 +39,9 @@ export class FillProcessorService {
       const executionMs = Date.now() - startTime
       console.log(`   ✓ Executed in ${executionMs}ms`)
 
+      const trackedPnl = parseFloat(fill.closedPnl || '0')
+      const userEstimatedPnl = trackedPnl * this.balanceRatio
+
       this.loggerService.logTrade({
         coin: fill.coin,
         action: action.action,
@@ -47,7 +50,10 @@ export class FillProcessorService {
         price: parseFloat(fill.px),
         timestamp: Date.now(),
         executionMs,
-        connectionId
+        connectionId,
+        realizedPnl: userEstimatedPnl,
+        fee: fill.fee,
+        orderId: fill.oid
       })
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error)

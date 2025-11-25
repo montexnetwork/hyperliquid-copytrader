@@ -13,6 +13,9 @@ export interface TradeLogEntry {
   executionMs: number
   connectionId: number
   syncReason?: string
+  realizedPnl?: number
+  fee?: string
+  orderId?: number
 }
 
 export class LoggerService {
@@ -55,10 +58,20 @@ export class LoggerService {
   }
 
   logTrade(entry: TradeLogEntry): void {
-    const filePath = path.join(this.dataDir, 'trades.jsonl')
+    const date = new Date(entry.timestamp).toISOString().split('T')[0]
+    const filePath = path.join(this.dataDir, `trades-${date}.jsonl`)
     this.appendLine(filePath, JSON.stringify({
-      ...entry,
-      date: new Date(entry.timestamp).toISOString()
+      timestamp: entry.timestamp,
+      date: new Date(entry.timestamp).toISOString(),
+      coin: entry.coin,
+      side: entry.side === 'long' ? 'sell' : 'buy',
+      size: entry.size,
+      price: entry.price,
+      action: entry.action,
+      orderId: entry.orderId || 0,
+      realizedPnl: entry.realizedPnl || 0,
+      fee: entry.fee || '0',
+      executionMs: entry.executionMs
     }))
   }
 
