@@ -37,7 +37,33 @@ app.get('/api/snapshots', (req: Request, res: Response) => {
       .trim()
       .split('\n')
       .filter(line => line)
-      .map(line => JSON.parse(line))
+      .map(line => {
+        const snapshot = JSON.parse(line)
+
+        if (snapshot.user?.positions) {
+          snapshot.user.totalUnrealizedPnl = snapshot.user.positions.reduce(
+            (sum: number, p: { unrealizedPnl?: number }) => sum + (p.unrealizedPnl || 0),
+            0
+          )
+          snapshot.user.totalMarginUsed = snapshot.user.positions.reduce(
+            (sum: number, p: { marginUsed?: number }) => sum + (p.marginUsed || 0),
+            0
+          )
+        }
+
+        if (snapshot.tracked?.positions) {
+          snapshot.tracked.totalUnrealizedPnl = snapshot.tracked.positions.reduce(
+            (sum: number, p: { unrealizedPnl?: number }) => sum + (p.unrealizedPnl || 0),
+            0
+          )
+          snapshot.tracked.totalMarginUsed = snapshot.tracked.positions.reduce(
+            (sum: number, p: { marginUsed?: number }) => sum + (p.marginUsed || 0),
+            0
+          )
+        }
+
+        return snapshot
+      })
       .sort((a, b) => a.timestamp - b.timestamp)
 
     res.json({ snapshots, count: snapshots.length, date: targetDate })
