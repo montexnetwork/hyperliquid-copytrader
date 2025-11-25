@@ -303,8 +303,14 @@
     .daily-card-percent {
       font-size: 0.85em;
       color: #8899a6;
-      margin-bottom: 8px;
+      margin-bottom: 4px;
       text-align: center;
+    }
+    .daily-card-balance {
+      font-size: 0.8em;
+      color: #657786;
+      text-align: center;
+      margin-bottom: 4px;
     }
     .daily-card-chart { height: 40px; margin-top: 8px; }
     .daily-card-chart canvas { width: 100% !important; height: 40px !important; }
@@ -1027,6 +1033,7 @@
             <div class="daily-card-date">${dateLabel}</div>
             <div class="daily-card-pnl ${pnlClass}">${pnlSign}$${day.totalPnl.toFixed(2)}</div>
             <div class="daily-card-percent">${pnlSign}${day.pnlPercentage.toFixed(2)}%</div>
+            <div class="daily-card-balance">$${day.endBalance.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</div>
             <div class="daily-card-chart"><canvas id="${chartId}"></canvas></div>
           `;
           card.addEventListener('click', () => filterByDay(day.date));
