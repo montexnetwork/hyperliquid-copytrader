@@ -222,7 +222,10 @@ export class TelegramService {
       entryDiffStr = `${entryDiffSign}${entryDiff.toFixed(2)}% ${favorableIcon}`
     }
 
-    let result = `┌ *${pos.coin}* ${pos.side.toUpperCase()}\n`
+    const pnlSign = pos.unrealizedPnl >= 0 ? '+' : ''
+    const pnlStr = `${pnlSign}$${pos.unrealizedPnl.toFixed(2)}`
+
+    let result = `┌ *${pos.coin}* ${pos.side.toUpperCase()} (${pnlStr})\n`
     result += `├ Size: $${pos.notionalValue.toLocaleString('en-US', { maximumFractionDigits: 0 })} (${sizePercent.toFixed(1)}%)\n`
     result += `├ Size diff: ${sizeDiffStr}\n`
     result += `├ Entry: $${pos.entryPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\n`
