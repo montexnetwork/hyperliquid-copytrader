@@ -103,11 +103,11 @@ export class DriftDetectorService {
     scaledTargetSize: number
   ): boolean {
     if (userPos.size < scaledTargetSize) {
-      return this.checkOpenFavorability(
-        tracked.side,
-        tracked.markPrice,
-        tracked.entryPrice
-      )
+      if (tracked.side === 'long') {
+        return tracked.markPrice <= tracked.entryPrice
+      } else {
+        return tracked.markPrice >= tracked.entryPrice
+      }
     } else {
       if (userPos.side === 'long') {
         return userPos.markPrice > userPos.entryPrice
