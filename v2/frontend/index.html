@@ -1123,7 +1123,7 @@
       let cardsHtml = '<div class="positions-cards">';
 
       for (const pos of userPositions) {
-        const isLong = pos.size > 0;
+        const isLong = pos.side === 'long';
         const direction = isLong ? 'LONG' : 'SHORT';
         const directionClass = isLong ? 'direction-long' : 'direction-short';
         const pnl = pos.unrealizedPnl || 0;
