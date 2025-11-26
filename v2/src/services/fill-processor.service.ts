@@ -40,8 +40,11 @@ export class FillProcessorService {
     }
 
     if (this.telegramService.isHrefModeEnabled()) {
-      console.log('   🔗 HREF mode active, skipping websocket fill')
-      return
+      const entryActions: TradeAction[] = ['open', 'add', 'reverse']
+      if (entryActions.includes(action.action)) {
+        console.log('   🔗 HREF mode active, skipping entry')
+        return
+      }
     }
 
     const startTime = Date.now()
