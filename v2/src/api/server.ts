@@ -203,7 +203,7 @@ app.get('/api/balance-history', (req: Request, res: Response) => {
   try {
     const daysParam = req.query.days as string
     const numDays = daysParam ? parseInt(daysParam) : 10
-    const balanceHistory: Array<{ date: string; balance: number }> = []
+    const balanceHistory: Array<{ timestamp: number; balance: number }> = []
     const today = new Date()
 
     for (let i = numDays - 1; i >= 0; i--) {
@@ -216,14 +216,17 @@ app.get('/api/balance-history', (req: Request, res: Response) => {
         const content = fs.readFileSync(filePath, 'utf-8')
         const lines = content.trim().split('\n').filter(line => line)
 
-        if (lines.length > 0) {
-          const last = JSON.parse(lines[lines.length - 1])
-          const balance = last.user?.accountValue || 0
-          balanceHistory.push({ date: dateStr, balance })
+        for (const line of lines) {
+          const snapshot = JSON.parse(line)
+          balanceHistory.push({
+            timestamp: snapshot.timestamp,
+            balance: snapshot.user?.accountValue || 0
+          })
         }
       }
     }
 
+    balanceHistory.sort((a, b) => a.timestamp - b.timestamp)
     res.json({ history: balanceHistory, count: balanceHistory.length })
   } catch (error) {
     res.status(500).json({ error: 'Failed to read balance history' })

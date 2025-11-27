@@ -578,7 +578,7 @@
     function renderBalanceHistoryChart() {
       if (balanceHistoryData.length === 0) return;
 
-      const dates = balanceHistoryData.map(d => new Date(d.date));
+      const timestamps = balanceHistoryData.map(d => new Date(d.timestamp));
       const balances = balanceHistoryData.map(d => d.balance);
 
       const minBalance = Math.min(...balances);
@@ -589,20 +589,17 @@
       chartInstances['balance-history-chart'] = new Chart(document.getElementById('balance-history-chart').getContext('2d'), {
         type: 'line',
         data: {
-          labels: dates,
+          labels: timestamps,
           datasets: [{
             label: 'Balance',
             data: balances,
             borderColor: '#00d4ff',
             backgroundColor: 'rgba(0, 212, 255, 0.15)',
             fill: true,
-            borderWidth: 3,
-            tension: 0.3,
-            pointRadius: 6,
-            pointBackgroundColor: '#00d4ff',
-            pointBorderColor: '#0a0e27',
-            pointBorderWidth: 2,
-            pointHoverRadius: 8
+            borderWidth: 2,
+            tension: 0.1,
+            pointRadius: 0,
+            pointHoverRadius: 4
           }]
         },
         options: {
@@ -626,8 +623,7 @@
             x: {
               type: 'time',
               time: {
-                unit: 'day',
-                tooltipFormat: 'MMM d, yyyy'
+                tooltipFormat: 'MMM d, HH:mm'
               },
               ticks: { color: '#8899a6', font: { size: 11 } },
               grid: { color: '#38444d', display: true }
