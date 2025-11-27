@@ -736,8 +736,6 @@
     let userFillsList = [];
     let trackedPingInterval = null;
     let userPingInterval = null;
-    let trackedWsIntentionalClose = false;
-    let userWsIntentionalClose = false;
 
     const SYMBOL_COLORS = [
       '#667eea', '#17bf63', '#e0245e', '#ffad1f', '#1da1f2', '#f91880',
@@ -877,19 +875,21 @@
       const statusId = type === 'tracked' ? 'tracked-ws-status' : 'user-ws-status';
 
       if (type === 'tracked') {
-        trackedWsIntentionalClose = true;
-        if (trackedWs) trackedWs.close();
         if (trackedPingInterval) clearInterval(trackedPingInterval);
-        trackedWs = null;
         trackedPingInterval = null;
-        trackedWsIntentionalClose = false;
+        if (trackedWs) {
+          trackedWs.onclose = null;
+          trackedWs.close();
+        }
+        trackedWs = null;
       } else {
-        userWsIntentionalClose = true;
-        if (userWs) userWs.close();
         if (userPingInterval) clearInterval(userPingInterval);
-        userWs = null;
         userPingInterval = null;
-        userWsIntentionalClose = false;
+        if (userWs) {
+          userWs.onclose = null;
+          userWs.close();
+        }
+        userWs = null;
       }
 
       const ws = new WebSocket('wss://api.hyperliquid.xyz/ws');
@@ -960,8 +960,6 @@
       };
 
       ws.onclose = () => {
-        const intentionalClose = type === 'tracked' ? trackedWsIntentionalClose : userWsIntentionalClose;
-
         if (type === 'tracked' && trackedPingInterval) {
           clearInterval(trackedPingInterval);
           trackedPingInterval = null;
@@ -971,7 +969,8 @@
           userPingInterval = null;
         }
 
-        if (intentionalClose) return;
+        const currentWs = type === 'tracked' ? trackedWs : userWs;
+        if (currentWs !== ws) return;
 
         const statusEl = document.getElementById(statusId);
         if (statusEl) {
@@ -979,6 +978,9 @@
           statusEl.className = 'ws-status disconnected';
         }
         setTimeout(() => {
+          const stillCurrentWs = type === 'tracked' ? trackedWs : userWs;
+          if (stillCurrentWs !== ws) return;
+
           if (currentAccountId && currentAccountId !== 'summary') {
             const account = accounts.find(a => a.id === currentAccountId);
             if (account) {
@@ -1037,8 +1039,6 @@
     }
 
     function cleanupFillsWebSockets() {
-      trackedWsIntentionalClose = true;
-      userWsIntentionalClose = true;
       if (trackedPingInterval) {
         clearInterval(trackedPingInterval);
         trackedPingInterval = null;
@@ -1048,17 +1048,17 @@
         userPingInterval = null;
       }
       if (trackedWs) {
+        trackedWs.onclose = null;
         trackedWs.close();
         trackedWs = null;
       }
       if (userWs) {
+        userWs.onclose = null;
         userWs.close();
         userWs = null;
       }
       trackedFillsList = [];
       userFillsList = [];
-      trackedWsIntentionalClose = false;
-      userWsIntentionalClose = false;
     }
 
     async function loadSummaryView() {
