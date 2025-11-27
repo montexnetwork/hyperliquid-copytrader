@@ -804,7 +804,7 @@
       </div>
 
       <div class="chart-container">
-        <div class="chart-title">Realized PnL by Symbol</div>
+        <div class="chart-title">Realized PnL by Symbol (% of Balance)</div>
         <canvas id="realized-pnl-chart"></canvas>
       </div>
 
@@ -1661,12 +1661,15 @@
         return;
       }
 
+      const trackedBaseBalance = filteredSnapshots[0]?.tracked?.accountValue || 1;
+      const userBaseBalance = filteredSnapshots[0]?.user?.accountValue || 1;
+
       const trackedData = {};
       trackedFills.sort((a, b) => a.timestamp - b.timestamp).forEach(fill => {
         if (!trackedData[fill.coin]) trackedData[fill.coin] = { x: [], y: [], cumulative: 0 };
         trackedData[fill.coin].cumulative += fill.closedPnl;
         trackedData[fill.coin].x.push(new Date(fill.timestamp));
-        trackedData[fill.coin].y.push(trackedData[fill.coin].cumulative);
+        trackedData[fill.coin].y.push((trackedData[fill.coin].cumulative / trackedBaseBalance) * 100);
       });
 
       const userData = {};
@@ -1674,7 +1677,7 @@
         if (!userData[trade.coin]) userData[trade.coin] = { x: [], y: [], cumulative: 0 };
         userData[trade.coin].cumulative += trade.realizedPnl;
         userData[trade.coin].x.push(new Date(trade.timestamp));
-        userData[trade.coin].y.push(userData[trade.coin].cumulative);
+        userData[trade.coin].y.push((userData[trade.coin].cumulative / userBaseBalance) * 100);
       });
 
       const datasets = [];
@@ -1698,7 +1701,7 @@
       chartInstances['realized-pnl-chart'] = new Chart(ctx, {
         type: 'line',
         data: { datasets },
-        options: getChartOptions('Cumulative PNL ($)', v => '$' + v.toFixed(2))
+        options: getChartOptions('Cumulative PNL (% of Balance)', v => v.toFixed(2) + '%')
       });
     }
 
