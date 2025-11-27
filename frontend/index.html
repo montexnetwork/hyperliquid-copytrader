@@ -154,12 +154,6 @@
       margin-bottom: 12px;
     }
 
-    .summary-card-positions-list {
-      margin-top: 12px;
-      padding-top: 12px;
-      border-top: 1px solid rgba(255, 255, 255, 0.1);
-    }
-
     .summary-position-row {
       display: flex;
       justify-content: space-between;
@@ -215,15 +209,30 @@
       height: 80px !important;
     }
 
-    .allocation-pie-chart {
+    .summary-card-content {
+      display: flex;
+      gap: 12px;
       margin-top: 12px;
       padding-top: 12px;
       border-top: 1px solid rgba(255, 255, 255, 0.1);
     }
 
+    .allocation-pie-chart {
+      flex-shrink: 0;
+      width: 100px;
+      height: 100px;
+    }
+
     .allocation-pie-chart canvas {
-      width: 100% !important;
-      height: 120px !important;
+      width: 100px !important;
+      height: 100px !important;
+    }
+
+    .summary-card-positions-list {
+      flex: 1;
+      margin-top: 0;
+      padding-top: 0;
+      border-top: none;
     }
 
     .fills-section {
@@ -1162,9 +1171,15 @@
         }
 
         const pieChartId = `allocation-pie-${summary.accountId}`;
-        let pieChartHtml = '';
+
+        let contentHtml = '';
         if (positions.length > 0) {
-          pieChartHtml = `<div class="allocation-pie-chart"><canvas id="${pieChartId}"></canvas></div>`;
+          contentHtml = `
+            <div class="summary-card-content">
+              <div class="allocation-pie-chart"><canvas id="${pieChartId}"></canvas></div>
+              ${positionsHtml}
+            </div>
+          `;
         }
 
         card.innerHTML = `
@@ -1175,8 +1190,7 @@
           <div class="summary-card-balance">$${summary.balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
           <div class="summary-card-pnl ${pnlClass}">PnL: ${pnlSign}$${Math.abs(pnl).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
           <div class="summary-card-positions">${positions.length} open positions</div>
-          ${pieChartHtml}
-          ${positionsHtml}
+          ${contentHtml}
           ${entryDiffHtml}
         `;
 
