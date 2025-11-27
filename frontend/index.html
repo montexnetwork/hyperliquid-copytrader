@@ -765,25 +765,24 @@
         </div>
       </div>
 
-      <div class="charts-row" id="position-charts-row" style="display: none;">
-        <div class="chart-container" id="position-allocation-chart-container">
-          <div class="chart-title">Position Allocation (% of Balance)</div>
-          <div class="dual-pie-container">
-            <div class="pie-wrapper">
-              <canvas id="tracked-allocation-chart"></canvas>
-              <div class="pie-label">Tracked</div>
-            </div>
-            <div class="pie-wrapper">
-              <canvas id="user-allocation-chart"></canvas>
-              <div class="pie-label">User</div>
-            </div>
+      <div class="chart-container" id="position-allocation-chart-container" style="display: none;">
+        <div class="chart-title">Position Allocation (% of Balance)</div>
+        <div class="dual-pie-container">
+          <div class="pie-wrapper">
+            <canvas id="tracked-allocation-chart"></canvas>
+            <div class="pie-label">Tracked</div>
           </div>
-          <div class="pie-legend" id="allocation-legend"></div>
+          <div class="pie-wrapper">
+            <canvas id="user-allocation-chart"></canvas>
+            <div class="pie-label">User</div>
+          </div>
         </div>
-        <div class="chart-container" id="position-size-chart-container">
-          <div class="chart-title">Position Size (% of Balance)</div>
-          <canvas id="position-size-chart"></canvas>
-        </div>
+        <div class="pie-legend" id="allocation-legend"></div>
+      </div>
+
+      <div class="chart-container" id="position-size-chart-container" style="display: none;">
+        <div class="chart-title">Position Size (% of Balance)</div>
+        <canvas id="position-size-chart"></canvas>
       </div>
 
       <div class="fills-section" id="fills-section"></div>
@@ -1907,12 +1906,12 @@
       const trackedAccountValue = latest.tracked?.accountValue || 1;
       const userAccountValue = latest.user?.accountValue || 1;
 
-      const rowContainer = document.getElementById('position-charts-row');
+      const allocationContainer = document.getElementById('position-allocation-chart-container');
       if (trackedPositions.length === 0 && userPositions.length === 0) {
-        rowContainer.style.display = 'none';
+        allocationContainer.style.display = 'none';
         return;
       }
-      rowContainer.style.display = 'grid';
+      allocationContainer.style.display = 'block';
 
       renderAllocationPie('tracked-allocation-chart', trackedPositions, trackedAccountValue);
       renderAllocationPie('user-allocation-chart', userPositions, userAccountValue);
@@ -1975,7 +1974,11 @@
     }
 
     function renderPositionSizeChart() {
-      if (filteredSnapshots.length === 0) return;
+      const sizeContainer = document.getElementById('position-size-chart-container');
+      if (filteredSnapshots.length === 0) {
+        sizeContainer.style.display = 'none';
+        return;
+      }
 
       const allCoins = new Set();
       for (const snapshot of filteredSnapshots) {
@@ -1985,7 +1988,11 @@
         trackedPositions.forEach(p => allCoins.add(p.coin));
       }
 
-      if (allCoins.size === 0) return;
+      if (allCoins.size === 0) {
+        sizeContainer.style.display = 'none';
+        return;
+      }
+      sizeContainer.style.display = 'block';
 
       const dates = filteredSnapshots.map(s => new Date(s.timestamp));
       const datasets = [];
