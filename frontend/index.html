@@ -953,10 +953,11 @@
             const isSnapshot = msg.data.isSnapshot;
 
             if (isSnapshot && Array.isArray(msg.data.fills)) {
+              const sortedFills = msg.data.fills.sort((a, b) => new Date(b.time) - new Date(a.time)).slice(0, 50);
               if (type === 'tracked') {
-                trackedFillsList = msg.data.fills.slice(0, 50);
+                trackedFillsList = sortedFills;
               } else {
-                userFillsList = msg.data.fills.slice(0, 50);
+                userFillsList = sortedFills;
               }
             } else if (!isSnapshot) {
               const newFills = Array.isArray(msg.data) ? msg.data : (msg.data.fills || []);
