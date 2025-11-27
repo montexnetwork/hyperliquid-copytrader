@@ -413,7 +413,8 @@ export class HyperliquidService {
   async closePosition(coin: string, price: number, userWallet: string, size?: number, vaultAddress?: string, minOrderValue?: number): Promise<OrderResponse> {
     if (!this.walletClient) throw new Error('Wallet client not initialized')
 
-    const positions = await this.getOpenPositions(userWallet)
+    const positionWallet = vaultAddress || userWallet
+    const positions = await this.getOpenPositions(positionWallet)
     const position = positions.find(p => p.coin === coin)
     if (!position) throw new Error(`No open position for ${coin}`)
 

@@ -84,7 +84,7 @@ export class TelegramService {
       if (msg.chat.id.toString() === this.chatId) {
         const accounts = Array.from(this.accountSnapshots.keys()).join(', ') || 'none'
         const message =
-          '🤖 *Copyscalper Multi-Account*\n\n' +
+          '🤖 *Hyperscalper Multi-Account*\n\n' +
           'Commands:\n' +
           '/status - Global status (all accounts)\n' +
           '/status <id> - Specific account status\n' +

@@ -23,7 +23,7 @@ interface AccountContext {
 }
 
 async function main(): Promise<void> {
-  console.log('\n🚀 Copyscalper Multi-Account Starting...\n')
+  console.log('\n🚀 Hyperscalper Multi-Account Starting...\n')
 
   const globalConfig = loadMultiAccountConfig()
   const enabledAccounts = globalConfig.accounts.filter(a => a.enabled)
@@ -128,7 +128,7 @@ async function main(): Promise<void> {
 
   await telegramService.sendMonitoringStarted(enabledAccounts.length)
 
-  console.log(`\n✓ Copyscalper running with ${enabledAccounts.length} account(s)\n`)
+  console.log(`\n✓ Hyperscalper running with ${enabledAccounts.length} account(s)\n`)
 
   const shutdown = async (): Promise<void> => {
     console.log('\n🛑 Shutting down...')

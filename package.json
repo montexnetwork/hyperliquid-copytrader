@@ -1,5 +1,5 @@
 {
-  "name": "copyscalper-v2",
+  "name": "hyperscalper",
   "version": "2.0.0",
   "description": "Simplified Hyperliquid copy trading bot",
   "main": "dist/index.js",

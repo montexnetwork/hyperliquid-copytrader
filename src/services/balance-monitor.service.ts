@@ -52,13 +52,14 @@ export class BalanceMonitorService {
 
   private async poll(): Promise<void> {
     try {
-      const { trackedWallet, userWallet } = this.accountConfig
+      const { trackedWallet, userWallet, vaultAddress } = this.accountConfig
+      const userPositionWallet = vaultAddress || userWallet
 
       const [trackedBalance, trackedPositions, userBalance, userPositions] = await Promise.all([
         this.hyperliquidService.getAccountBalance(trackedWallet),
         this.hyperliquidService.getOpenPositions(trackedWallet),
-        this.hyperliquidService.getAccountBalance(userWallet),
-        this.hyperliquidService.getOpenPositions(userWallet)
+        this.hyperliquidService.getAccountBalance(userPositionWallet),
+        this.hyperliquidService.getOpenPositions(userPositionWallet)
       ])
 
       const trackedValue = parseFloat(trackedBalance.accountValue)
@@ -102,13 +103,14 @@ export class BalanceMonitorService {
 
   async getSnapshot(): Promise<MonitorSnapshot | null> {
     try {
-      const { trackedWallet, userWallet } = this.accountConfig
+      const { trackedWallet, userWallet, vaultAddress } = this.accountConfig
+      const userPositionWallet = vaultAddress || userWallet
 
       const [trackedBalance, trackedPositions, userBalance, userPositions] = await Promise.all([
         this.hyperliquidService.getAccountBalance(trackedWallet),
         this.hyperliquidService.getOpenPositions(trackedWallet),
-        this.hyperliquidService.getAccountBalance(userWallet),
-        this.hyperliquidService.getOpenPositions(userWallet)
+        this.hyperliquidService.getAccountBalance(userPositionWallet),
+        this.hyperliquidService.getOpenPositions(userPositionWallet)
       ])
 
       const trackedValue = parseFloat(trackedBalance.accountValue)
