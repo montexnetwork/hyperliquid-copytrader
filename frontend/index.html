@@ -215,21 +215,21 @@
       height: 80px !important;
     }
 
-    .hyperformance-iframes {
+    .fills-section {
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 20px;
       margin-bottom: 30px;
     }
 
-    .iframe-container {
+    .fills-container {
       background: rgba(255, 255, 255, 0.05);
       border: 1px solid rgba(255, 255, 255, 0.1);
       border-radius: 16px;
       overflow: hidden;
     }
 
-    .iframe-header {
+    .fills-header {
       padding: 12px 16px;
       background: rgba(255, 255, 255, 0.03);
       border-bottom: 1px solid rgba(255, 255, 255, 0.1);
@@ -240,24 +240,115 @@
       align-items: center;
     }
 
-    .iframe-header a {
+    .fills-header .wallet-link {
       color: #00d4ff;
       text-decoration: none;
       font-size: 0.85em;
     }
 
-    .iframe-header a:hover {
+    .fills-header .wallet-link:hover {
       text-decoration: underline;
     }
 
-    .iframe-container iframe {
-      width: 100%;
-      height: 100vh;
-      border: none;
+    .fills-header .ws-status {
+      font-size: 0.75em;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+
+    .fills-header .ws-status.connected {
+      background: rgba(23, 191, 99, 0.2);
+      color: #17bf63;
+    }
+
+    .fills-header .ws-status.disconnected {
+      background: rgba(224, 36, 94, 0.2);
+      color: #e0245e;
+    }
+
+    .fills-list {
+      max-height: 400px;
+      overflow-y: auto;
+      padding: 8px;
+    }
+
+    .fill-item {
+      display: grid;
+      grid-template-columns: 75px 70px 40px 80px 90px 70px;
+      gap: 8px;
+      align-items: center;
+      padding: 6px 10px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      font-size: 0.8em;
+    }
+
+    .fill-item:last-child {
+      border-bottom: none;
+    }
+
+    .fill-item.new {
+      animation: fillHighlight 2s ease-out;
+    }
+
+    @keyframes fillHighlight {
+      0% { background: rgba(0, 212, 255, 0.3); }
+      100% { background: transparent; }
+    }
+
+    .fill-item .fill-coin {
+      font-weight: 600;
+      color: #e1e8ed;
+    }
+
+    .fill-item .fill-side {
+      font-size: 0.7em;
+      padding: 2px 4px;
+      border-radius: 3px;
+      font-weight: 600;
+      text-align: center;
+    }
+
+    .fill-item .fill-side.buy {
+      background: rgba(23, 191, 99, 0.2);
+      color: #17bf63;
+    }
+
+    .fill-item .fill-side.sell {
+      background: rgba(224, 36, 94, 0.2);
+      color: #e0245e;
+    }
+
+    .fill-item .fill-size {
+      color: #e1e8ed;
+      text-align: right;
+    }
+
+    .fill-item .fill-price {
+      color: #8899a6;
+      text-align: right;
+    }
+
+    .fill-item .fill-time {
+      color: #657786;
+      text-align: center;
+    }
+
+    .fill-item .fill-pnl {
+      font-weight: 500;
+      text-align: right;
+    }
+
+    .fill-item .fill-pnl.positive { color: #17bf63; }
+    .fill-item .fill-pnl.negative { color: #e0245e; }
+
+    .no-fills {
+      text-align: center;
+      color: #657786;
+      padding: 40px;
     }
 
     @media (max-width: 1200px) {
-      .hyperformance-iframes {
+      .fills-section {
         grid-template-columns: 1fr;
       }
     }
@@ -538,6 +629,8 @@
         </div>
       </div>
 
+      <div class="fills-section" id="fills-section"></div>
+
       <div class="positions-section">
         <div class="positions-title">Current Positions</div>
         <div id="positions-container"></div>
@@ -568,8 +661,6 @@
           <canvas id="risk-chart"></canvas>
         </div>
       </div>
-
-      <div class="hyperformance-iframes" id="hyperformance-iframes"></div>
     </div>
   </div>
 
@@ -584,6 +675,10 @@
     let allBalanceHistory = {};
     let selectedDate = new Date().toISOString().split('T')[0];
     let chartInstances = {};
+    let trackedWs = null;
+    let userWs = null;
+    let trackedFillsList = [];
+    let userFillsList = [];
 
     const SYMBOL_COLORS = [
       '#667eea', '#17bf63', '#e0245e', '#ffad1f', '#1da1f2', '#f91880',
@@ -666,6 +761,7 @@
       document.getElementById(accountId === 'summary' ? 'tab-summary' : `tab-${accountId}`).classList.add('active');
 
       currentAccountId = accountId;
+      cleanupFillsWebSockets();
 
       if (accountId === 'summary') {
         document.getElementById('summary-view').style.display = 'block';
@@ -674,13 +770,13 @@
       } else {
         document.getElementById('summary-view').style.display = 'none';
         document.getElementById('account-view').style.display = 'block';
-        renderHyperformanceIframes(accountId);
+        renderFillsSection(accountId);
         await fetchSnapshots(selectedDate);
       }
     }
 
-    function renderHyperformanceIframes(accountId) {
-      const container = document.getElementById('hyperformance-iframes');
+    function renderFillsSection(accountId) {
+      const container = document.getElementById('fills-section');
       const account = accounts.find(a => a.id === accountId);
 
       if (!account || !account.trackedWallet || !account.userWallet) {
@@ -688,25 +784,169 @@
         return;
       }
 
-      const trackedUrl = `https://hypurrscan.io/address/${account.trackedWallet}`;
-      const userUrl = `https://hypurrscan.io/address/${account.userWallet}`;
+      trackedFillsList = [];
+      userFillsList = [];
 
       container.innerHTML = `
-        <div class="iframe-container">
-          <div class="iframe-header">
-            <span>Tracked Account</span>
-            <a href="${trackedUrl}" target="_blank">${account.trackedWallet.slice(0, 6)}...${account.trackedWallet.slice(-4)}</a>
+        <div class="fills-container">
+          <div class="fills-header">
+            <span>Tracked Fills</span>
+            <span class="ws-status disconnected" id="tracked-ws-status">Connecting...</span>
+            <a class="wallet-link" href="https://hypurrscan.io/address/${account.trackedWallet}" target="_blank">${account.trackedWallet.slice(0, 6)}...${account.trackedWallet.slice(-4)}</a>
           </div>
-          <iframe src="${trackedUrl}" loading="lazy"></iframe>
+          <div class="fills-list" id="tracked-fills-list">
+            <div class="no-fills">Connecting...</div>
+          </div>
         </div>
-        <div class="iframe-container">
-          <div class="iframe-header">
-            <span>User Account</span>
-            <a href="${userUrl}" target="_blank">${account.userWallet.slice(0, 6)}...${account.userWallet.slice(-4)}</a>
+        <div class="fills-container">
+          <div class="fills-header">
+            <span>User Fills</span>
+            <span class="ws-status disconnected" id="user-ws-status">Connecting...</span>
+            <a class="wallet-link" href="https://hypurrscan.io/address/${account.userWallet}" target="_blank">${account.userWallet.slice(0, 6)}...${account.userWallet.slice(-4)}</a>
           </div>
-          <iframe src="${userUrl}" loading="lazy"></iframe>
+          <div class="fills-list" id="user-fills-list">
+            <div class="no-fills">Connecting...</div>
+          </div>
         </div>
       `;
+
+      subscribeToFills(account.trackedWallet, 'tracked');
+      subscribeToFills(account.userWallet, 'user');
+    }
+
+    function subscribeToFills(wallet, type) {
+      const wsRef = type === 'tracked' ? 'trackedWs' : 'userWs';
+      const statusId = type === 'tracked' ? 'tracked-ws-status' : 'user-ws-status';
+      const listId = type === 'tracked' ? 'tracked-fills-list' : 'user-fills-list';
+
+      if (type === 'tracked' && trackedWs) {
+        trackedWs.close();
+        trackedWs = null;
+      }
+      if (type === 'user' && userWs) {
+        userWs.close();
+        userWs = null;
+      }
+
+      const ws = new WebSocket('wss://api.hyperliquid.xyz/ws');
+
+      ws.onopen = () => {
+        ws.send(JSON.stringify({
+          method: 'subscribe',
+          subscription: { type: 'userFills', user: wallet }
+        }));
+        const statusEl = document.getElementById(statusId);
+        if (statusEl) {
+          statusEl.textContent = 'Connected';
+          statusEl.className = 'ws-status connected';
+        }
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          if (msg.channel === 'userFills' && msg.data) {
+            const fills = Array.isArray(msg.data) ? msg.data : [msg.data];
+            const isSnapshot = msg.data.isSnapshot;
+
+            if (isSnapshot && Array.isArray(msg.data.fills)) {
+              if (type === 'tracked') {
+                trackedFillsList = msg.data.fills.slice(0, 50);
+              } else {
+                userFillsList = msg.data.fills.slice(0, 50);
+              }
+            } else if (!isSnapshot) {
+              const newFills = Array.isArray(msg.data) ? msg.data : (msg.data.fills || []);
+              for (const fill of newFills) {
+                if (type === 'tracked') {
+                  trackedFillsList.unshift(fill);
+                  if (trackedFillsList.length > 50) trackedFillsList.pop();
+                } else {
+                  userFillsList.unshift(fill);
+                  if (userFillsList.length > 50) userFillsList.pop();
+                }
+              }
+            }
+            renderFillsList(type, true);
+          }
+        } catch (e) {
+          console.error('Failed to parse fills message:', e);
+        }
+      };
+
+      ws.onerror = (error) => {
+        console.error(`WebSocket error (${type}):`, error);
+        const statusEl = document.getElementById(statusId);
+        if (statusEl) {
+          statusEl.textContent = 'Error';
+          statusEl.className = 'ws-status disconnected';
+        }
+      };
+
+      ws.onclose = () => {
+        const statusEl = document.getElementById(statusId);
+        if (statusEl) {
+          statusEl.textContent = 'Disconnected';
+          statusEl.className = 'ws-status disconnected';
+        }
+      };
+
+      if (type === 'tracked') {
+        trackedWs = ws;
+      } else {
+        userWs = ws;
+      }
+    }
+
+    function renderFillsList(type, isNew = false) {
+      const listId = type === 'tracked' ? 'tracked-fills-list' : 'user-fills-list';
+      const fills = type === 'tracked' ? trackedFillsList : userFillsList;
+      const listEl = document.getElementById(listId);
+
+      if (!listEl) return;
+
+      if (fills.length === 0) {
+        listEl.innerHTML = '<div class="no-fills">No recent fills</div>';
+        return;
+      }
+
+      listEl.innerHTML = fills.map((fill, index) => {
+        const isBuy = fill.side === 'B';
+        const sideClass = isBuy ? 'buy' : 'sell';
+        const sideText = isBuy ? 'BUY' : 'SELL';
+        const time = new Date(fill.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const price = parseFloat(fill.px).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+        const size = parseFloat(fill.sz).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+        const pnl = fill.closedPnl ? parseFloat(fill.closedPnl) : 0;
+        const pnlClass = pnl >= 0 ? 'positive' : 'negative';
+        const pnlSign = pnl >= 0 ? '+' : '';
+        const pnlText = pnl !== 0 ? `${pnlSign}$${Math.abs(pnl).toFixed(2)}` : '-';
+        const newClass = isNew && index === 0 ? 'new' : '';
+
+        return `
+          <div class="fill-item ${newClass}">
+            <span class="fill-time">${time}</span>
+            <span class="fill-coin">${fill.coin}</span>
+            <span class="fill-side ${sideClass}">${sideText}</span>
+            <span class="fill-size">${size}</span>
+            <span class="fill-price">$${price}</span>
+            <span class="fill-pnl ${pnlClass}">${pnlText}</span>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function cleanupFillsWebSockets() {
+      if (trackedWs) {
+        trackedWs.close();
+        trackedWs = null;
+      }
+      if (userWs) {
+        userWs.close();
+        userWs = null;
+      }
+      trackedFillsList = [];
+      userFillsList = [];
     }
 
     async function loadSummaryView() {
