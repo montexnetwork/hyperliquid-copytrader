@@ -1,0 +1,1116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Copyscalper - Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background: linear-gradient(135deg, #0a0e27 0%, #1a1a2e 25%, #16213e 50%, #0f3460 75%, #1a1a2e 100%);
+      color: #e1e8ed;
+      padding: 20px;
+      min-height: 100vh;
+      position: relative;
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background:
+        radial-gradient(circle at 20% 50%, rgba(0, 212, 255, 0.08) 0%, transparent 50%),
+        radial-gradient(circle at 80% 80%, rgba(102, 126, 234, 0.08) 0%, transparent 50%),
+        radial-gradient(circle at 40% 20%, rgba(118, 75, 162, 0.06) 0%, transparent 50%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    body > * { position: relative; z-index: 1; }
+
+    .header { text-align: center; margin-bottom: 20px; }
+
+    h1 {
+      font-size: clamp(1.8rem, 5vw, 2.5rem);
+      margin-bottom: 10px;
+      background: linear-gradient(135deg, #00d4ff 0%, #667eea 50%, #a855f7 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      filter: drop-shadow(0 0 20px rgba(0, 212, 255, 0.3));
+    }
+
+    .account-tabs {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .account-tab {
+      padding: 12px 24px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 12px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      color: #8899a6;
+      font-weight: 500;
+    }
+
+    .account-tab:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: rgba(0, 212, 255, 0.3);
+    }
+
+    .account-tab.active {
+      background: linear-gradient(135deg, rgba(0, 212, 255, 0.2) 0%, rgba(102, 126, 234, 0.15) 100%);
+      border-color: rgba(0, 212, 255, 0.5);
+      color: #e1e8ed;
+      box-shadow: 0 0 20px rgba(0, 212, 255, 0.2);
+    }
+
+    .account-tab .tab-balance {
+      font-size: 0.85em;
+      color: #657786;
+      margin-top: 4px;
+    }
+
+    .account-tab.active .tab-balance { color: #8899a6; }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 15px;
+      margin-bottom: 30px;
+    }
+
+    .summary-card {
+      background: rgba(255, 255, 255, 0.05);
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 16px;
+      padding: 20px;
+      transition: all 0.3s ease;
+      cursor: pointer;
+    }
+
+    .summary-card:hover {
+      transform: translateY(-5px);
+      border-color: rgba(0, 212, 255, 0.5);
+      box-shadow: 0 12px 40px rgba(0, 212, 255, 0.2);
+    }
+
+    .summary-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 15px;
+    }
+
+    .summary-card-name {
+      font-size: 1.1em;
+      font-weight: 600;
+      color: #e1e8ed;
+    }
+
+    .summary-card-status {
+      padding: 4px 10px;
+      border-radius: 8px;
+      font-size: 0.8em;
+      font-weight: 500;
+    }
+
+    .status-active {
+      background: rgba(23, 191, 99, 0.2);
+      color: #17bf63;
+    }
+
+    .status-paused {
+      background: rgba(255, 173, 31, 0.2);
+      color: #ffad1f;
+    }
+
+    .summary-card-balance {
+      font-size: 1.8em;
+      font-weight: bold;
+      color: #e1e8ed;
+      margin-bottom: 8px;
+    }
+
+    .summary-card-positions {
+      font-size: 0.9em;
+      color: #8899a6;
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 15px;
+      margin-bottom: 30px;
+    }
+
+    .stat-card {
+      background: rgba(255, 255, 255, 0.05);
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 16px;
+      padding: 20px;
+      transition: all 0.3s ease;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    }
+
+    .stat-card:hover {
+      transform: translateY(-5px) scale(1.02);
+      border-color: rgba(0, 212, 255, 0.5);
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    .stat-label {
+      font-size: 0.85em;
+      color: #8899a6;
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .stat-value {
+      font-size: clamp(1.3rem, 4vw, 1.8rem);
+      font-weight: bold;
+      color: #e1e8ed;
+    }
+
+    .stat-value.positive { color: #17bf63; }
+    .stat-value.negative { color: #e0245e; }
+    .positive { color: #17bf63; }
+    .negative { color: #e0245e; }
+
+    .chart-container {
+      background: rgba(255, 255, 255, 0.05);
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 16px;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+      min-width: 0;
+      overflow-x: auto;
+      transition: all 0.3s ease;
+    }
+
+    .chart-container:hover {
+      border-color: rgba(0, 212, 255, 0.3);
+    }
+
+    .chart-container canvas { min-height: 300px; max-height: 400px; }
+    .chart-title {
+      font-size: clamp(1rem, 3vw, 1.3rem);
+      margin-bottom: 15px;
+      color: #e1e8ed;
+    }
+
+    .loading { text-align: center; padding: 50px; font-size: 1.5em; color: #8899a6; }
+
+    .error {
+      background: rgba(224, 36, 94, 0.1);
+      border: 1px solid rgba(224, 36, 94, 0.3);
+      color: #ff6b9d;
+      padding: 20px;
+      border-radius: 12px;
+      margin-bottom: 20px;
+    }
+
+    .controls {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 16px;
+      padding: 20px;
+      margin-bottom: 20px;
+      display: flex;
+      gap: 15px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .control-group { display: flex; flex-direction: column; gap: 5px; }
+    .control-group label {
+      font-size: 0.85em;
+      color: #8899a6;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .daily-cards-container { margin-bottom: 30px; }
+    .daily-cards-title { font-size: 1.3em; margin-bottom: 15px; color: #e1e8ed; }
+    .daily-cards-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 10px;
+    }
+
+    .daily-card {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 12px;
+      padding: 12px;
+      transition: all 0.3s ease;
+      cursor: pointer;
+      min-height: 120px;
+    }
+
+    .daily-card:hover {
+      transform: translateY(-4px) scale(1.03);
+      border-color: rgba(0, 212, 255, 0.4);
+    }
+
+    .daily-card.selected {
+      border-color: rgba(0, 212, 255, 0.6);
+      background: linear-gradient(135deg, rgba(0, 212, 255, 0.15) 0%, rgba(102, 126, 234, 0.1) 100%);
+    }
+
+    .daily-card.no-data { opacity: 0.5; cursor: not-allowed; }
+    .daily-card-date { font-size: 0.75em; color: #8899a6; text-transform: uppercase; margin-bottom: 6px; text-align: center; }
+    .daily-card-pnl { font-size: 1.2em; font-weight: bold; margin-bottom: 4px; text-align: center; }
+    .daily-card-pnl.positive { color: #17bf63; }
+    .daily-card-pnl.negative { color: #e0245e; }
+    .daily-card-percent { font-size: 0.85em; color: #8899a6; margin-bottom: 4px; text-align: center; }
+    .daily-card-balance { font-size: 0.8em; color: #657786; text-align: center; margin-bottom: 4px; }
+    .daily-card-chart { height: 40px; margin-top: 8px; }
+    .daily-card-chart canvas { width: 100% !important; height: 40px !important; }
+
+    .positions-section {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 16px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+
+    .positions-title { font-size: 1.1em; margin-bottom: 15px; color: #e1e8ed; }
+    .positions-table { width: 100%; border-collapse: collapse; }
+    .positions-table th, .positions-table td {
+      padding: 12px;
+      text-align: left;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    .positions-table th { font-size: 0.8em; color: #8899a6; text-transform: uppercase; }
+    .positions-table td { font-size: 0.95em; }
+
+    .direction-long { color: #17bf63; font-weight: bold; padding: 4px 8px; background: rgba(23, 191, 99, 0.15); border-radius: 4px; }
+    .direction-short { color: #e0245e; font-weight: bold; padding: 4px 8px; background: rgba(224, 36, 94, 0.15); border-radius: 4px; }
+    .no-positions { text-align: center; color: #8899a6; padding: 30px; }
+
+    .charts-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      margin-bottom: 20px;
+    }
+
+    @media (max-width: 768px) {
+      body { padding: 10px; }
+      .account-tabs { justify-content: flex-start; overflow-x: auto; flex-wrap: nowrap; padding-bottom: 10px; }
+      .account-tab { flex-shrink: 0; padding: 10px 16px; }
+      .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+      .daily-cards-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+      .charts-row { grid-template-columns: 1fr; }
+      .summary-grid { grid-template-columns: 1fr; }
+      .positions-table { display: none; }
+    }
+
+    @media (min-width: 769px) and (max-width: 1024px) {
+      .daily-cards-grid { grid-template-columns: repeat(5, 1fr); }
+      .charts-row { grid-template-columns: 1fr; }
+    }
+
+    .total-summary {
+      background: linear-gradient(135deg, rgba(0, 212, 255, 0.1) 0%, rgba(102, 126, 234, 0.08) 100%);
+      border: 1px solid rgba(0, 212, 255, 0.2);
+      border-radius: 16px;
+      padding: 25px;
+      margin-bottom: 30px;
+      text-align: center;
+    }
+
+    .total-summary-label { font-size: 0.9em; color: #8899a6; margin-bottom: 8px; text-transform: uppercase; }
+    .total-summary-value { font-size: 2.5em; font-weight: bold; color: #e1e8ed; }
+    .total-summary-sub { font-size: 1em; color: #8899a6; margin-top: 8px; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>Copyscalper</h1>
+  </div>
+
+  <div id="loading" class="loading">Loading accounts...</div>
+  <div id="error" class="error" style="display: none;"></div>
+
+  <div id="dashboard" style="display: none;">
+    <div class="account-tabs" id="account-tabs"></div>
+
+    <div id="summary-view" style="display: none;">
+      <div class="total-summary">
+        <div class="total-summary-label">Total Balance (All Accounts)</div>
+        <div class="total-summary-value" id="total-balance">$0</div>
+        <div class="total-summary-sub" id="total-positions">0 positions across 0 accounts</div>
+      </div>
+
+      <div class="chart-container">
+        <div class="chart-title">Combined 10-Day Balance History</div>
+        <canvas id="combined-balance-chart"></canvas>
+      </div>
+
+      <div class="summary-grid" id="accounts-summary-grid"></div>
+    </div>
+
+    <div id="account-view" style="display: none;">
+      <div class="chart-container" style="margin-bottom: 30px;">
+        <div class="chart-title">10-Day Balance History</div>
+        <canvas id="balance-history-chart"></canvas>
+      </div>
+
+      <div class="daily-cards-container">
+        <div class="daily-cards-title">Last 10 Days</div>
+        <div class="daily-cards-grid" id="daily-cards-grid"></div>
+      </div>
+
+      <div class="controls">
+        <div class="control-group">
+          <label>Viewing Data For:</label>
+          <span id="selected-date-display" style="font-weight: bold; font-size: 1.1em;">Today</span>
+        </div>
+      </div>
+
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-label">Realized Balance</div>
+          <div class="stat-value" id="realized-balance">$0</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Balance</div>
+          <div class="stat-value" id="balance">$0</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Current PNL</div>
+          <div class="stat-value" id="current-pnl">$0</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Daily PNL</div>
+          <div class="stat-value" id="daily-pnl">$0</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Open Positions</div>
+          <div class="stat-value" id="position-count">0</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Margin Usage</div>
+          <div class="stat-value" id="margin-used">$0</div>
+        </div>
+      </div>
+
+      <div class="positions-section">
+        <div class="positions-title">Current Positions</div>
+        <div id="positions-container"></div>
+      </div>
+
+      <div class="chart-container">
+        <div class="chart-title">Balance Change (%)</div>
+        <canvas id="balance-chart"></canvas>
+      </div>
+
+      <div class="chart-container">
+        <div class="chart-title">Unrealized PNL (% of Balance)</div>
+        <canvas id="pnl-chart"></canvas>
+      </div>
+
+      <div class="chart-container">
+        <div class="chart-title">Realized PnL by Symbol</div>
+        <canvas id="realized-pnl-chart"></canvas>
+      </div>
+
+      <div class="charts-row">
+        <div class="chart-container">
+          <div class="chart-title">Drawdown Analysis</div>
+          <canvas id="drawdown-chart"></canvas>
+        </div>
+        <div class="chart-container">
+          <div class="chart-title">Risk Metrics</div>
+          <canvas id="risk-chart"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let accounts = [];
+    let currentAccountId = null;
+    let filteredSnapshots = [];
+    let allTrades = [];
+    let trackedFills = [];
+    let dailySummaryData = [];
+    let balanceHistoryData = [];
+    let allBalanceHistory = {};
+    let selectedDate = new Date().toISOString().split('T')[0];
+    let chartInstances = {};
+
+    const SYMBOL_COLORS = [
+      '#667eea', '#17bf63', '#e0245e', '#ffad1f', '#1da1f2', '#f91880',
+      '#794bc4', '#00ba7c', '#ff6b6b', '#4ecdc4', '#95e1d3', '#f38181'
+    ];
+
+    const ACCOUNT_COLORS = ['#00d4ff', '#667eea', '#17bf63', '#ffad1f', '#f91880', '#794bc4', '#e0245e', '#4ecdc4'];
+
+    function getSymbolColor(symbol) {
+      let hash = 0;
+      for (let i = 0; i < symbol.length; i++) {
+        hash = symbol.charCodeAt(i) + ((hash << 5) - hash);
+      }
+      return SYMBOL_COLORS[Math.abs(hash) % SYMBOL_COLORS.length];
+    }
+
+    function getAccountColor(index) {
+      return ACCOUNT_COLORS[index % ACCOUNT_COLORS.length];
+    }
+
+    async function init() {
+      try {
+        const [accountsRes, summaryRes] = await Promise.all([
+          fetch('/api/accounts'),
+          fetch('/api/summary')
+        ]);
+
+        const accountsData = await accountsRes.json();
+        const summaryData = await summaryRes.json();
+
+        accounts = accountsData.accounts || [];
+
+        if (accounts.length === 0) {
+          accounts = [{ id: 'default', name: 'Default Account' }];
+        }
+
+        for (const acc of accounts) {
+          const summary = summaryData.accounts?.find(s => s.accountId === acc.id);
+          if (summary) {
+            acc.balance = summary.balance;
+            acc.positions = summary.positions;
+            acc.tradingPaused = summary.tradingPaused;
+          }
+        }
+
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('dashboard').style.display = 'block';
+
+        renderAccountTabs();
+        selectAccount('summary');
+      } catch (error) {
+        showError(`Error loading accounts: ${error.message}`);
+      }
+    }
+
+    function renderAccountTabs() {
+      const container = document.getElementById('account-tabs');
+      container.innerHTML = '';
+
+      const summaryTab = document.createElement('div');
+      summaryTab.className = 'account-tab';
+      summaryTab.id = 'tab-summary';
+      summaryTab.innerHTML = `<div>Summary</div><div class="tab-balance">${accounts.length} accounts</div>`;
+      summaryTab.addEventListener('click', () => selectAccount('summary'));
+      container.appendChild(summaryTab);
+
+      for (const account of accounts) {
+        const tab = document.createElement('div');
+        tab.className = 'account-tab';
+        tab.id = `tab-${account.id}`;
+        const balanceStr = account.balance ? `$${account.balance.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : '-';
+        tab.innerHTML = `<div>${account.name}</div><div class="tab-balance">${balanceStr}</div>`;
+        tab.addEventListener('click', () => selectAccount(account.id));
+        container.appendChild(tab);
+      }
+    }
+
+    async function selectAccount(accountId) {
+      document.querySelectorAll('.account-tab').forEach(tab => tab.classList.remove('active'));
+      document.getElementById(accountId === 'summary' ? 'tab-summary' : `tab-${accountId}`).classList.add('active');
+
+      currentAccountId = accountId;
+
+      if (accountId === 'summary') {
+        document.getElementById('summary-view').style.display = 'block';
+        document.getElementById('account-view').style.display = 'none';
+        await loadSummaryView();
+      } else {
+        document.getElementById('summary-view').style.display = 'none';
+        document.getElementById('account-view').style.display = 'block';
+        await fetchSnapshots(selectedDate);
+      }
+    }
+
+    async function loadSummaryView() {
+      try {
+        const [summaryRes, historyRes] = await Promise.all([
+          fetch('/api/summary'),
+          fetch('/api/balance-history/all?days=10')
+        ]);
+
+        const summaryData = await summaryRes.json();
+        const historyData = await historyRes.json();
+
+        allBalanceHistory = historyData.accounts || {};
+
+        const totalBalance = summaryData.total?.balance || 0;
+        const totalPositions = summaryData.total?.positions || 0;
+        const accountCount = summaryData.total?.accountCount || 0;
+
+        document.getElementById('total-balance').textContent =
+          `$${totalBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        document.getElementById('total-positions').textContent =
+          `${totalPositions} positions across ${accountCount} accounts`;
+
+        renderAccountsSummaryGrid(summaryData.accounts || []);
+        renderCombinedBalanceChart();
+      } catch (error) {
+        console.error('Failed to load summary:', error);
+      }
+    }
+
+    function renderAccountsSummaryGrid(accountSummaries) {
+      const container = document.getElementById('accounts-summary-grid');
+      container.innerHTML = '';
+
+      for (const summary of accountSummaries) {
+        const card = document.createElement('div');
+        card.className = 'summary-card';
+        card.addEventListener('click', () => selectAccount(summary.accountId));
+
+        const statusClass = summary.tradingPaused ? 'status-paused' : 'status-active';
+        const statusText = summary.tradingPaused ? 'Paused' : 'Active';
+
+        card.innerHTML = `
+          <div class="summary-card-header">
+            <span class="summary-card-name">${summary.name}</span>
+            <span class="summary-card-status ${statusClass}">${statusText}</span>
+          </div>
+          <div class="summary-card-balance">$${summary.balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+          <div class="summary-card-positions">${summary.positions} open positions</div>
+        `;
+
+        container.appendChild(card);
+      }
+    }
+
+    function renderCombinedBalanceChart() {
+      if (chartInstances['combined-balance-chart']) chartInstances['combined-balance-chart'].destroy();
+
+      const datasets = [];
+      let index = 0;
+
+      for (const [accountId, history] of Object.entries(allBalanceHistory)) {
+        if (history.length === 0) continue;
+
+        const account = accounts.find(a => a.id === accountId);
+        const accountName = account ? account.name : accountId;
+        const color = getAccountColor(index);
+
+        datasets.push({
+          label: accountName,
+          data: history.map(h => ({ x: new Date(h.timestamp), y: h.balance })),
+          borderColor: color,
+          backgroundColor: color + '20',
+          borderWidth: 2,
+          tension: 0.1,
+          pointRadius: 0,
+          fill: false
+        });
+
+        index++;
+      }
+
+      chartInstances['combined-balance-chart'] = new Chart(document.getElementById('combined-balance-chart').getContext('2d'), {
+        type: 'line',
+        data: { datasets },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { mode: 'index', intersect: false },
+          plugins: {
+            legend: { position: 'bottom', labels: { color: '#e1e8ed' } },
+            tooltip: {
+              backgroundColor: '#192734',
+              titleColor: '#e1e8ed',
+              bodyColor: '#8899a6',
+              callbacks: {
+                label: ctx => `${ctx.dataset.label}: $${ctx.parsed.y.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+              }
+            }
+          },
+          scales: {
+            x: {
+              type: 'time',
+              time: { unit: 'day', displayFormats: { day: 'MMM d' } },
+              ticks: { color: '#8899a6' },
+              grid: { color: '#38444d' }
+            },
+            y: {
+              ticks: { color: '#8899a6', callback: v => '$' + v.toLocaleString() },
+              grid: { color: '#38444d' }
+            }
+          }
+        }
+      });
+    }
+
+    async function fetchSnapshots(date = null) {
+      try {
+        const targetDate = date || selectedDate;
+        const accountParam = currentAccountId && currentAccountId !== 'summary' ? `&account=${currentAccountId}` : '';
+
+        const [snapshotsRes, tradesRes, trackedFillsRes, summaryRes, balanceHistoryRes] = await Promise.all([
+          fetch(`/api/snapshots?date=${targetDate}${accountParam}`),
+          fetch(`/api/trades?date=${targetDate}${accountParam}`),
+          fetch(`/api/tracked-fills?date=${targetDate}${accountParam}`),
+          fetch(`/api/daily-summary?days=10${accountParam}`),
+          fetch(`/api/balance-history?days=10${accountParam}`)
+        ]);
+
+        const snapshotsData = await snapshotsRes.json();
+        const tradesData = await tradesRes.json();
+        const trackedFillsData = await trackedFillsRes.json();
+        const summaryData = await summaryRes.json();
+        const balanceHistoryDataRes = await balanceHistoryRes.json();
+
+        filteredSnapshots = snapshotsData.snapshots || [];
+        allTrades = tradesData.trades || [];
+        trackedFills = trackedFillsData.fills || [];
+        dailySummaryData = summaryData.days || [];
+        balanceHistoryData = balanceHistoryDataRes.history || [];
+
+        if (filteredSnapshots.length === 0) {
+          showNoData(targetDate);
+          return;
+        }
+
+        updateSelectedDateDisplay(targetDate);
+        renderDashboard();
+      } catch (error) {
+        showError(`Error loading data: ${error.message}`);
+      }
+    }
+
+    function showNoData(date) {
+      document.getElementById('positions-container').innerHTML = '<div class="no-positions">No data available</div>';
+      updateSelectedDateDisplay(date);
+      renderDailyCards();
+      renderBalanceHistoryChart();
+    }
+
+    async function filterByDay(dateStr) {
+      selectedDate = dateStr;
+      updateSelectedDateDisplay(dateStr);
+      await fetchSnapshots(dateStr);
+    }
+
+    function updateSelectedDateDisplay(dateStr) {
+      const displayEl = document.getElementById('selected-date-display');
+      const today = new Date().toISOString().split('T')[0];
+      displayEl.textContent = dateStr === today ? 'Today' : new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    }
+
+    function renderDashboard() {
+      if (filteredSnapshots.length === 0) return;
+
+      document.getElementById('error').style.display = 'none';
+
+      renderBalanceHistoryChart();
+      renderDailyCards();
+      updateStats();
+      renderPositionsTable();
+      renderBalanceChart();
+      renderPnlChart();
+      renderRealizedPnlChart();
+      renderDrawdownChart();
+      renderRiskChart();
+    }
+
+    function renderBalanceHistoryChart() {
+      if (balanceHistoryData.length === 0) return;
+
+      const timestamps = balanceHistoryData.map(d => new Date(d.timestamp));
+      const balances = balanceHistoryData.map(d => d.balance);
+      const minBalance = Math.min(...balances);
+      const maxBalance = Math.max(...balances);
+      const padding = (maxBalance - minBalance) * 0.1 || 100;
+
+      if (chartInstances['balance-history-chart']) chartInstances['balance-history-chart'].destroy();
+      chartInstances['balance-history-chart'] = new Chart(document.getElementById('balance-history-chart').getContext('2d'), {
+        type: 'line',
+        data: {
+          labels: timestamps,
+          datasets: [{
+            label: 'Balance',
+            data: balances,
+            borderColor: '#00d4ff',
+            backgroundColor: 'rgba(0, 212, 255, 0.15)',
+            fill: true,
+            borderWidth: 2,
+            tension: 0.1,
+            pointRadius: 0
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              backgroundColor: '#192734',
+              callbacks: { label: ctx => `$${ctx.parsed.y.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` }
+            }
+          },
+          scales: {
+            x: {
+              type: 'time',
+              time: { unit: 'day', displayFormats: { day: 'MMM d' } },
+              ticks: { color: '#8899a6', maxTicksLimit: 10 },
+              grid: { color: '#38444d' }
+            },
+            y: {
+              min: minBalance - padding,
+              max: maxBalance + padding,
+              ticks: { color: '#8899a6', callback: v => '$' + v.toLocaleString() },
+              grid: { color: '#38444d' }
+            }
+          }
+        }
+      });
+    }
+
+    function updateStats() {
+      const latest = filteredSnapshots[filteredSnapshots.length - 1];
+      const first = filteredSnapshots[0];
+      const user = latest.user;
+
+      const realizedBalance = user.accountValue - (user.totalUnrealizedPnl || 0);
+      document.getElementById('realized-balance').textContent = `$${realizedBalance.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+      document.getElementById('balance').textContent = `$${user.accountValue.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+
+      const currentPnl = user.totalUnrealizedPnl || 0;
+      const currentPnlEl = document.getElementById('current-pnl');
+      currentPnlEl.textContent = `$${currentPnl.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+      currentPnlEl.className = `stat-value ${currentPnl >= 0 ? 'positive' : 'negative'}`;
+
+      const dailyPnl = user.accountValue - first.user.accountValue;
+      const dailyPnlEl = document.getElementById('daily-pnl');
+      dailyPnlEl.textContent = `$${dailyPnl.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+      dailyPnlEl.className = `stat-value ${dailyPnl >= 0 ? 'positive' : 'negative'}`;
+
+      document.getElementById('position-count').textContent = user.positions?.length || 0;
+      document.getElementById('margin-used').textContent = `$${(user.totalMarginUsed || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+    }
+
+    function renderBalanceChart() {
+      const dates = filteredSnapshots.map(s => new Date(s.timestamp));
+      const firstTracked = filteredSnapshots[0].tracked.accountValue;
+      const firstUser = filteredSnapshots[0].user.accountValue;
+      const trackedChangePct = filteredSnapshots.map(s => ((s.tracked.accountValue - firstTracked) / firstTracked) * 100);
+      const userChangePct = filteredSnapshots.map(s => ((s.user.accountValue - firstUser) / firstUser) * 100);
+
+      if (chartInstances['balance-chart']) chartInstances['balance-chart'].destroy();
+      chartInstances['balance-chart'] = new Chart(document.getElementById('balance-chart').getContext('2d'), {
+        type: 'line',
+        data: {
+          labels: dates,
+          datasets: [
+            { label: 'Tracked Balance', data: trackedChangePct, borderColor: '#667eea', backgroundColor: 'rgba(102, 126, 234, 0.1)', fill: true, borderWidth: 2, tension: 0.1, pointRadius: 0 },
+            { label: 'User Balance', data: userChangePct, borderColor: '#17bf63', backgroundColor: 'rgba(23, 191, 99, 0.1)', borderDash: [5, 5], fill: true, borderWidth: 2, tension: 0.1, pointRadius: 0 }
+          ]
+        },
+        options: getChartOptions('Change (%)', v => v.toFixed(2) + '%')
+      });
+    }
+
+    function renderPnlChart() {
+      const dates = filteredSnapshots.map(s => new Date(s.timestamp));
+      const trackedPnlPct = filteredSnapshots.map(s => (s.tracked.totalUnrealizedPnl / s.tracked.accountValue) * 100);
+      const userPnlPct = filteredSnapshots.map(s => (s.user.totalUnrealizedPnl / s.user.accountValue) * 100);
+
+      if (chartInstances['pnl-chart']) chartInstances['pnl-chart'].destroy();
+      chartInstances['pnl-chart'] = new Chart(document.getElementById('pnl-chart').getContext('2d'), {
+        type: 'line',
+        data: {
+          labels: dates,
+          datasets: [
+            { label: 'Tracked PNL', data: trackedPnlPct, borderColor: '#667eea', backgroundColor: 'rgba(102, 126, 234, 0.1)', fill: true, borderWidth: 2, tension: 0.1, pointRadius: 0 },
+            { label: 'User PNL', data: userPnlPct, borderColor: '#17bf63', backgroundColor: 'rgba(23, 191, 99, 0.1)', borderDash: [5, 5], fill: true, borderWidth: 2, tension: 0.1, pointRadius: 0 }
+          ]
+        },
+        options: getChartOptions('% of Balance', v => v.toFixed(2) + '%')
+      });
+    }
+
+    function renderRealizedPnlChart() {
+      if (chartInstances['realized-pnl-chart']) chartInstances['realized-pnl-chart'].destroy();
+      const ctx = document.getElementById('realized-pnl-chart').getContext('2d');
+
+      if (allTrades.length === 0 && trackedFills.length === 0) {
+        chartInstances['realized-pnl-chart'] = new Chart(ctx, {
+          type: 'line',
+          data: { datasets: [] },
+          options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { display: false }, y: { display: false } } },
+          plugins: [{
+            id: 'noDataMessage',
+            afterDraw: (chart) => {
+              chart.ctx.save();
+              chart.ctx.textAlign = 'center';
+              chart.ctx.textBaseline = 'middle';
+              chart.ctx.font = '16px sans-serif';
+              chart.ctx.fillStyle = '#657786';
+              chart.ctx.fillText('No closed trades', chart.width / 2, chart.height / 2);
+              chart.ctx.restore();
+            }
+          }]
+        });
+        return;
+      }
+
+      const trackedData = {};
+      trackedFills.sort((a, b) => a.timestamp - b.timestamp).forEach(fill => {
+        if (!trackedData[fill.coin]) trackedData[fill.coin] = { x: [], y: [], cumulative: 0 };
+        trackedData[fill.coin].cumulative += fill.closedPnl;
+        trackedData[fill.coin].x.push(new Date(fill.timestamp));
+        trackedData[fill.coin].y.push(trackedData[fill.coin].cumulative);
+      });
+
+      const userData = {};
+      allTrades.sort((a, b) => a.timestamp - b.timestamp).forEach(trade => {
+        if (!userData[trade.coin]) userData[trade.coin] = { x: [], y: [], cumulative: 0 };
+        userData[trade.coin].cumulative += trade.realizedPnl;
+        userData[trade.coin].x.push(new Date(trade.timestamp));
+        userData[trade.coin].y.push(userData[trade.coin].cumulative);
+      });
+
+      const datasets = [];
+      Object.entries(trackedData).forEach(([coin, data]) => {
+        datasets.push({
+          label: `${coin} (Tracked)`,
+          data: data.x.map((x, i) => ({ x, y: data.y[i] })),
+          borderColor: getSymbolColor(coin),
+          borderWidth: 2, tension: 0.1, fill: false, pointRadius: 0
+        });
+      });
+      Object.entries(userData).forEach(([coin, data]) => {
+        datasets.push({
+          label: `${coin} (User)`,
+          data: data.x.map((x, i) => ({ x, y: data.y[i] })),
+          borderColor: getSymbolColor(coin),
+          borderWidth: 2, borderDash: [5, 5], tension: 0.1, fill: false, pointRadius: 0
+        });
+      });
+
+      chartInstances['realized-pnl-chart'] = new Chart(ctx, {
+        type: 'line',
+        data: { datasets },
+        options: getChartOptions('Cumulative PNL ($)', v => '$' + v.toFixed(2))
+      });
+    }
+
+    function renderDrawdownChart() {
+      const dates = filteredSnapshots.map(s => new Date(s.timestamp));
+      const trackedDrawdown = calculateDrawdown(filteredSnapshots.map(s => s.tracked.accountValue));
+      const userDrawdown = calculateDrawdown(filteredSnapshots.map(s => s.user.accountValue));
+
+      if (chartInstances['drawdown-chart']) chartInstances['drawdown-chart'].destroy();
+      chartInstances['drawdown-chart'] = new Chart(document.getElementById('drawdown-chart').getContext('2d'), {
+        type: 'line',
+        data: {
+          labels: dates,
+          datasets: [
+            { label: 'Tracked Drawdown', data: trackedDrawdown, borderColor: '#667eea', backgroundColor: 'rgba(102, 126, 234, 0.3)', fill: true, borderWidth: 2, tension: 0.1, pointRadius: 0 },
+            { label: 'User Drawdown', data: userDrawdown, borderColor: '#17bf63', backgroundColor: 'rgba(23, 191, 99, 0.3)', fill: true, borderWidth: 2, tension: 0.1, pointRadius: 0 }
+          ]
+        },
+        options: getChartOptions('Drawdown (%)', v => v.toFixed(2) + '%')
+      });
+    }
+
+    function calculateDrawdown(values) {
+      const drawdowns = [];
+      let runningMax = values[0];
+      for (const v of values) {
+        if (v > runningMax) runningMax = v;
+        drawdowns.push(((v - runningMax) / runningMax) * 100);
+      }
+      return drawdowns;
+    }
+
+    function renderRiskChart() {
+      const dates = filteredSnapshots.map(s => new Date(s.timestamp));
+
+      if (chartInstances['risk-chart']) chartInstances['risk-chart'].destroy();
+      chartInstances['risk-chart'] = new Chart(document.getElementById('risk-chart').getContext('2d'), {
+        type: 'line',
+        data: {
+          labels: dates,
+          datasets: [
+            { label: 'Tracked Avg Leverage', data: filteredSnapshots.map(s => s.tracked.averageLeverage), borderColor: '#667eea', borderWidth: 2, yAxisID: 'y', tension: 0.1, pointRadius: 0 },
+            { label: 'User Avg Leverage', data: filteredSnapshots.map(s => s.user.averageLeverage), borderColor: '#17bf63', borderWidth: 2, yAxisID: 'y', tension: 0.1, pointRadius: 0 },
+            { label: 'Tracked Margin Ratio', data: filteredSnapshots.map(s => s.tracked.crossMarginRatio), borderColor: '#e0245e', borderWidth: 2, borderDash: [5, 5], yAxisID: 'y2', tension: 0.1, pointRadius: 0 },
+            { label: 'User Margin Ratio', data: filteredSnapshots.map(s => s.user.crossMarginRatio), borderColor: '#ff6b9d', borderWidth: 2, borderDash: [5, 5], yAxisID: 'y2', tension: 0.1, pointRadius: 0 }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { mode: 'index', intersect: false },
+          plugins: { legend: { position: 'bottom', labels: { color: '#e1e8ed' } } },
+          scales: {
+            x: { type: 'time', time: { tooltipFormat: 'MMM d, HH:mm' }, ticks: { color: '#8899a6' }, grid: { color: '#38444d' } },
+            y: { ticks: { color: '#8899a6' }, grid: { color: '#38444d' } },
+            y2: { position: 'right', ticks: { color: '#8899a6' }, grid: { display: false } }
+          }
+        }
+      });
+    }
+
+    function renderDailyCards() {
+      const container = document.getElementById('daily-cards-grid');
+      container.innerHTML = '';
+
+      for (const day of dailySummaryData) {
+        const card = document.createElement('div');
+        card.className = day.hasData ? 'daily-card' : 'daily-card no-data';
+        if (day.date === selectedDate) card.classList.add('selected');
+
+        const dateLabel = new Date(day.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+        if (day.hasData) {
+          const pnlClass = day.totalPnl >= 0 ? 'positive' : 'negative';
+          const pnlSign = day.totalPnl >= 0 ? '+' : '';
+          const chartId = `daily-chart-${day.date}`;
+
+          card.innerHTML = `
+            <div class="daily-card-date">${dateLabel}</div>
+            <div class="daily-card-pnl ${pnlClass}">${pnlSign}$${day.totalPnl.toFixed(2)}</div>
+            <div class="daily-card-percent">${pnlSign}${day.pnlPercentage.toFixed(2)}%</div>
+            <div class="daily-card-balance">$${day.endBalance.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</div>
+            <div class="daily-card-chart"><canvas id="${chartId}"></canvas></div>
+          `;
+          card.addEventListener('click', () => filterByDay(day.date));
+          container.appendChild(card);
+          renderDailyMiniChart(chartId, day.date, pnlClass === 'positive');
+        } else {
+          card.innerHTML = `
+            <div class="daily-card-date">${dateLabel}</div>
+            <div style="text-align: center; color: #657786; font-size: 0.9em; padding: 20px 0;">No Data</div>
+          `;
+          container.appendChild(card);
+        }
+      }
+    }
+
+    async function renderDailyMiniChart(chartId, date, isPositive) {
+      try {
+        const accountParam = currentAccountId && currentAccountId !== 'summary' ? `&account=${currentAccountId}` : '';
+        const response = await fetch(`/api/snapshots?date=${date}${accountParam}`);
+        const data = await response.json();
+
+        if (!data.snapshots || data.snapshots.length === 0) return;
+
+        const balances = data.snapshots.map(s => s.user.accountValue);
+        const color = isPositive ? '#17bf63' : '#e0245e';
+        const ctx = document.getElementById(chartId);
+        if (!ctx) return;
+
+        new Chart(ctx.getContext('2d'), {
+          type: 'line',
+          data: {
+            labels: data.snapshots.map(s => new Date(s.timestamp)),
+            datasets: [{ data: balances, borderColor: color, backgroundColor: color + '20', borderWidth: 1.5, tension: 0.3, pointRadius: 0, fill: true }]
+          },
+          options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { enabled: false } }, scales: { x: { display: false }, y: { display: false } } }
+        });
+      } catch (error) {
+        console.error(`Failed to render mini chart for ${date}:`, error);
+      }
+    }
+
+    function renderPositionsTable() {
+      const container = document.getElementById('positions-container');
+      const latest = filteredSnapshots[filteredSnapshots.length - 1];
+      const userPositions = latest.user.positions || [];
+      const trackedPositions = latest.tracked.positions || [];
+      const trackedByCoins = {};
+      for (const pos of trackedPositions) trackedByCoins[pos.coin] = pos;
+
+      if (userPositions.length === 0) {
+        container.innerHTML = '<div class="no-positions">No open positions</div>';
+        return;
+      }
+
+      let html = `<table class="positions-table"><thead><tr><th>Coin</th><th>Direction</th><th>Size</th><th>User Entry</th><th>Tracked Entry</th><th>PNL</th></tr></thead><tbody>`;
+
+      for (const pos of userPositions) {
+        const isLong = pos.side === 'long';
+        const direction = isLong ? 'LONG' : 'SHORT';
+        const directionClass = isLong ? 'direction-long' : 'direction-short';
+        const pnl = pos.unrealizedPnl || 0;
+        const pnlClass = pnl >= 0 ? 'positive' : 'negative';
+        const pnlSign = pnl >= 0 ? '+' : '';
+        const trackedPos = trackedByCoins[pos.coin];
+        const trackedEntry = trackedPos ? trackedPos.entryPrice : null;
+        const sizeFormatted = '$' + Math.abs(pos.notionalValue || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        const entryFormatted = '$' + (pos.entryPrice || 0).toLocaleString(undefined, {minimumFractionDigits: 4, maximumFractionDigits: 4});
+        const trackedEntryFormatted = trackedEntry ? '$' + trackedEntry.toLocaleString(undefined, {minimumFractionDigits: 4, maximumFractionDigits: 4}) : '-';
+
+        let entryDiffHtml = '';
+        if (trackedEntry && pos.entryPrice) {
+          const diffPct = ((pos.entryPrice - trackedEntry) / trackedEntry) * 100;
+          const isFavorable = isLong ? diffPct < 0 : diffPct > 0;
+          const diffClass = isFavorable ? 'positive' : 'negative';
+          const diffSign = diffPct >= 0 ? '+' : '';
+          entryDiffHtml = `<span class="${diffClass}" style="margin-left: 8px; font-size: 0.85em;">(${diffSign}${diffPct.toFixed(2)}%)</span>`;
+        }
+
+        html += `<tr><td>${pos.coin}</td><td><span class="${directionClass}">${direction}</span></td><td>${sizeFormatted}</td><td>${entryFormatted}${entryDiffHtml}</td><td>${trackedEntryFormatted}</td><td class="${pnlClass}">${pnlSign}$${Math.abs(pnl).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td></tr>`;
+      }
+
+      html += '</tbody></table>';
+      container.innerHTML = html;
+    }
+
+    function getChartOptions(yLabel, tickCallback) {
+      return {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: { legend: { position: 'bottom', labels: { color: '#e1e8ed' } }, tooltip: { backgroundColor: '#192734', titleColor: '#e1e8ed', bodyColor: '#8899a6' } },
+        scales: {
+          x: { type: 'time', time: { tooltipFormat: 'MMM d, HH:mm' }, ticks: { color: '#8899a6' }, grid: { color: '#38444d' } },
+          y: { title: { display: true, text: yLabel, color: '#8899a6' }, ticks: { color: '#8899a6', callback: tickCallback }, grid: { color: '#38444d' } }
+        }
+      };
+    }
+
+    function showError(message) {
+      document.getElementById('loading').style.display = 'none';
+      document.getElementById('dashboard').style.display = 'none';
+      document.getElementById('error').style.display = 'block';
+      document.getElementById('error').textContent = message;
+    }
+
+    init();
+    setInterval(() => {
+      if (currentAccountId === 'summary') {
+        loadSummaryView();
+      } else {
+        fetchSnapshots();
+      }
+    }, 60000);
+  </script>
+</body>
+</html>
