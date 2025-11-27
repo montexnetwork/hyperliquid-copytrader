@@ -157,33 +157,52 @@ app.get('/api/trades', (req: Request, res: Response) => {
     const dateParam = req.query.date as string
     const targetDate = dateParam || new Date().toISOString().split('T')[0]
 
-    const dataDir = accountId ? path.join(DATA_DIR, accountId) : DATA_DIR
-    const dailyFilePath = path.join(dataDir, `trades-${targetDate}.jsonl`)
-    const legacyFilePath = path.join(dataDir, 'trades.jsonl')
-
     let trades: Array<Record<string, unknown>> = []
 
-    if (fs.existsSync(dailyFilePath)) {
-      const content = fs.readFileSync(dailyFilePath, 'utf-8')
-      trades = content
-        .trim()
-        .split('\n')
-        .filter(line => line)
-        .map(line => JSON.parse(line))
-    }
+    if (accountId === 'all') {
+      const accountIds = accountContexts.size > 0
+        ? Array.from(accountContexts.keys())
+        : globalConfig.accounts.filter(a => a.enabled).map(a => a.id)
 
-    if (trades.length === 0 && fs.existsSync(legacyFilePath)) {
-      const content = fs.readFileSync(legacyFilePath, 'utf-8')
-      const allTrades = content
-        .trim()
-        .split('\n')
-        .filter(line => line)
-        .map(line => JSON.parse(line))
+      for (const accId of accountIds) {
+        const dailyFilePath = path.join(DATA_DIR, accId, `trades-${targetDate}.jsonl`)
+        if (fs.existsSync(dailyFilePath)) {
+          const content = fs.readFileSync(dailyFilePath, 'utf-8')
+          const accTrades = content
+            .trim()
+            .split('\n')
+            .filter(line => line)
+            .map(line => ({ ...JSON.parse(line), accountId: accId }))
+          trades.push(...accTrades)
+        }
+      }
+    } else {
+      const dataDir = accountId ? path.join(DATA_DIR, accountId) : DATA_DIR
+      const dailyFilePath = path.join(dataDir, `trades-${targetDate}.jsonl`)
+      const legacyFilePath = path.join(dataDir, 'trades.jsonl')
 
-      trades = allTrades.filter(t => {
-        const tradeDate = new Date(t.timestamp).toISOString().split('T')[0]
-        return tradeDate === targetDate
-      })
+      if (fs.existsSync(dailyFilePath)) {
+        const content = fs.readFileSync(dailyFilePath, 'utf-8')
+        trades = content
+          .trim()
+          .split('\n')
+          .filter(line => line)
+          .map(line => JSON.parse(line))
+      }
+
+      if (trades.length === 0 && fs.existsSync(legacyFilePath)) {
+        const content = fs.readFileSync(legacyFilePath, 'utf-8')
+        const allTrades = content
+          .trim()
+          .split('\n')
+          .filter(line => line)
+          .map(line => JSON.parse(line))
+
+        trades = allTrades.filter(t => {
+          const tradeDate = new Date(t.timestamp).toISOString().split('T')[0]
+          return tradeDate === targetDate
+        })
+      }
     }
 
     trades.sort((a, b) => (a.timestamp as number) - (b.timestamp as number))
