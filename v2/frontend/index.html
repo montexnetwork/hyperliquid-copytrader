@@ -623,9 +623,11 @@
             x: {
               type: 'time',
               time: {
+                unit: 'day',
+                displayFormats: { day: 'MMM d' },
                 tooltipFormat: 'MMM d, HH:mm'
               },
-              ticks: { color: '#8899a6', font: { size: 11 } },
+              ticks: { color: '#8899a6', font: { size: 11 }, maxTicksLimit: 10 },
               grid: { color: '#38444d', display: true }
             },
             y: {
