@@ -294,8 +294,8 @@ h1 {
 
 .fill-item {
   display: grid;
-  grid-template-columns: 75px 70px 40px 80px 90px 70px;
-  gap: 8px;
+  grid-template-columns: 50px 55px 40px 70px 50px 80px 60px;
+  gap: 6px;
   align-items: center;
   padding: 6px 10px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
@@ -346,6 +346,12 @@ h1 {
 .fill-item .fill-price {
   color: #8899a6;
   text-align: right;
+}
+
+.fill-item .fill-usd {
+  color: #00d4ff;
+  text-align: right;
+  font-weight: 500;
 }
 
 .fill-item .fill-time {
@@ -689,7 +695,7 @@ h1 {
   .positions-table { display: none; }
   .positions-mobile { display: block; }
   .fills-section { grid-template-columns: 1fr; }
-  .fill-item { grid-template-columns: 60px 55px 35px 65px 75px 55px; gap: 4px; font-size: 0.75em; padding: 5px 8px; }
+  .fill-item { grid-template-columns: 45px 50px 35px 55px 45px 65px 50px; gap: 4px; font-size: 0.75em; padding: 5px 8px; }
 }
 
 @media (min-width: 769px) and (max-width: 1024px) {

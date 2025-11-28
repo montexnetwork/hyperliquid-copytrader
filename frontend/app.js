@@ -304,8 +304,12 @@ function renderFillsList(type, isNew = false) {
     const sideClass = isBuy ? 'buy' : 'sell';
     const sideText = isBuy ? 'BUY' : 'SELL';
     const time = new Date(fill.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    const price = parseFloat(fill.px).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 });
-    const size = parseFloat(fill.sz).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+    const priceNum = parseFloat(fill.px);
+    const sizeNum = parseFloat(fill.sz);
+    const price = priceNum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+    const size = sizeNum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+    const usdValue = priceNum * sizeNum;
+    const usdText = usdValue >= 1000 ? `$${(usdValue / 1000).toFixed(1)}k` : `$${usdValue.toFixed(0)}`;
     const pnl = fill.closedPnl ? parseFloat(fill.closedPnl) : 0;
     const pnlClass = pnl >= 0 ? 'positive' : 'negative';
     const pnlSign = pnl >= 0 ? '+' : '';
@@ -318,6 +322,7 @@ function renderFillsList(type, isNew = false) {
         <span class="fill-coin">${fill.coin}</span>
         <span class="fill-side ${sideClass}">${sideText}</span>
         <span class="fill-size">${size}</span>
+        <span class="fill-usd">${usdText}</span>
         <span class="fill-price">$${price}</span>
         <span class="fill-pnl ${pnlClass}">${pnlText}</span>
       </div>
