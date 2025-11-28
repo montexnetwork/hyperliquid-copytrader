@@ -737,49 +737,11 @@ function calculateEnhancedMetrics(summaryData, trades, balanceHistory) {
 }
 
 function updateEnhancedMetricsUI(metrics, balanceChange) {
-  const realizedEl = document.getElementById('today-realized-pnl');
-  realizedEl.textContent = `${metrics.todayRealizedPnl >= 0 ? '+' : ''}$${Math.abs(metrics.todayRealizedPnl).toFixed(2)}`;
-  realizedEl.className = `metric-value ${metrics.todayRealizedPnl >= 0 ? 'positive' : 'negative'}`;
-
-  const unrealizedEl = document.getElementById('total-unrealized-pnl');
-  unrealizedEl.textContent = `${metrics.totalUnrealizedPnl >= 0 ? '+' : ''}$${Math.abs(metrics.totalUnrealizedPnl).toFixed(2)}`;
-  unrealizedEl.className = `metric-value ${metrics.totalUnrealizedPnl >= 0 ? 'positive' : 'negative'}`;
-
-  const changeEl = document.getElementById('daily-change-pct');
-  changeEl.textContent = `${balanceChange >= 0 ? '+' : ''}${balanceChange.toFixed(2)}%`;
-  changeEl.className = `metric-value ${balanceChange >= 0 ? 'positive' : 'negative'}`;
-
   const balanceChangeEl = document.getElementById('total-balance-change');
-  balanceChangeEl.textContent = `${balanceChange >= 0 ? '+' : ''}${balanceChange.toFixed(2)}%`;
-  balanceChangeEl.className = `hero-metric-change ${balanceChange >= 0 ? 'positive' : 'negative'}`;
-
-  document.getElementById('margin-usage-pct').textContent = `${metrics.marginUsagePct.toFixed(1)}%`;
-  const marginBar = document.getElementById('margin-bar');
-  if (marginBar) {
-    marginBar.style.width = `${Math.min(metrics.marginUsagePct, 100)}%`;
-    marginBar.className = 'metric-bar-fill ' +
-      (metrics.marginUsagePct < 50 ? '' : metrics.marginUsagePct < 80 ? 'warning' : 'danger');
+  if (balanceChangeEl) {
+    balanceChangeEl.textContent = `${balanceChange >= 0 ? '+' : ''}${balanceChange.toFixed(2)}%`;
+    balanceChangeEl.className = `hero-metric-change ${balanceChange >= 0 ? 'positive' : 'negative'}`;
   }
-
-  document.getElementById('largest-position-pct').textContent = `${metrics.largestPosition.pct.toFixed(1)}%`;
-  document.getElementById('largest-position-coin').textContent = metrics.largestPosition.coin;
-
-  const drawdownEl = document.getElementById('current-drawdown');
-  drawdownEl.textContent = `-${metrics.drawdownPct.toFixed(2)}%`;
-  drawdownEl.className = `metric-value ${metrics.drawdownPct < 2 ? '' : 'negative'}`;
-
-  const winRateEl = document.getElementById('win-rate');
-  winRateEl.textContent = `${metrics.winRate.toFixed(1)}%`;
-  winRateEl.className = `metric-value ${metrics.winRate >= 50 ? 'positive' : 'negative'}`;
-  document.getElementById('win-rate-trades').textContent = `${metrics.winningCount}/${metrics.totalTradesWithPnl} trades`;
-
-  document.getElementById('avg-trade-size').textContent = `$${metrics.avgTradeSize.toFixed(0)}`;
-  document.getElementById('best-coin').textContent = metrics.bestCoin[0];
-  document.getElementById('worst-coin').textContent = metrics.worstCoin[0];
-
-  document.getElementById('avg-leverage').textContent = `${metrics.avgLeverage.toFixed(1)}x`;
-  document.getElementById('total-trades-today').textContent = metrics.totalTradesToday;
-  document.getElementById('active-coins').textContent = metrics.activeCoins;
 }
 
 async function loadSummaryView() {
