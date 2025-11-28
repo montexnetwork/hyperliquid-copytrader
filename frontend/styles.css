@@ -992,7 +992,7 @@ h1 {
 
 .live-trade-row {
   display: grid;
-  grid-template-columns: 58px 24px 38px 48px 46px 46px;
+  grid-template-columns: 70px 24px 50px 48px 44px 44px;
   gap: 4px;
   padding: 4px 0;
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
