@@ -411,6 +411,13 @@ function initSoundToggle() {
   if (btn) {
     btn.addEventListener('click', toggleSound);
   }
+
+  const reconnectBtn = document.getElementById('reconnect-ws');
+  if (reconnectBtn) {
+    reconnectBtn.addEventListener('click', () => {
+      subscribeToSummaryFills();
+    });
+  }
 }
 
 function updateSummaryWsStatus() {
