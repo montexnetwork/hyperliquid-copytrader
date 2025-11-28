@@ -413,6 +413,25 @@ function initSoundToggle() {
   }
 }
 
+function updateSummaryWsStatus() {
+  const indicator = document.getElementById('summary-ws-status');
+  if (!indicator) return;
+
+  const connectedCount = summaryWsConnections.filter(ws => ws.readyState === WebSocket.OPEN).length;
+  const totalAccounts = accounts.filter(a => a.userWallet).length;
+
+  if (connectedCount === totalAccounts && totalAccounts > 0) {
+    indicator.className = 'ws-indicator connected';
+    indicator.title = `Connected (${connectedCount}/${totalAccounts})`;
+  } else if (connectedCount > 0) {
+    indicator.className = 'ws-indicator connected';
+    indicator.title = `Partially connected (${connectedCount}/${totalAccounts})`;
+  } else {
+    indicator.className = 'ws-indicator disconnected';
+    indicator.title = 'Disconnected';
+  }
+}
+
 function subscribeToSummaryFills() {
   cleanupSummaryWebSockets();
   summaryLiveTrades = [];
@@ -421,6 +440,8 @@ function subscribeToSummaryFills() {
   if (listEl) {
     listEl.innerHTML = '<div class="no-trades">Connecting...</div>';
   }
+
+  updateSummaryWsStatus();
 
   for (const account of accounts) {
     if (!account.userWallet) continue;
@@ -432,6 +453,8 @@ function subscribeToSummaryFills() {
         method: 'subscribe',
         subscription: { type: 'userFills', user: account.userWallet }
       }));
+
+      updateSummaryWsStatus();
 
       const pingInterval = setInterval(() => {
         if (ws.readyState === WebSocket.OPEN) {
@@ -474,6 +497,7 @@ function subscribeToSummaryFills() {
     };
 
     ws.onclose = () => {
+      updateSummaryWsStatus();
       if (currentAccountId === 'summary') {
         setTimeout(() => {
           if (currentAccountId === 'summary') {

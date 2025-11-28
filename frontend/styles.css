@@ -1004,6 +1004,25 @@ h1 {
   font-size: 0.85em;
 }
 
+.ws-indicator {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-left: 6px;
+  background: #657786;
+  vertical-align: middle;
+}
+
+.ws-indicator.connected {
+  background: #17bf63;
+  box-shadow: 0 0 6px rgba(23, 191, 99, 0.5);
+}
+
+.ws-indicator.disconnected {
+  background: #e0245e;
+}
+
 .live-trade-row:last-child { border-bottom: none; }
 
 .live-trade-row.new {
