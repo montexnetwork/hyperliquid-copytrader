@@ -567,7 +567,10 @@ async function loadSummaryView() {
     if (allHistoryPoints.length > 0) {
       const sortedHistory = allHistoryPoints.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
       const today = new Date().toISOString().split('T')[0];
-      const todayHistory = sortedHistory.filter(h => h.timestamp.startsWith(today));
+      const todayHistory = sortedHistory.filter(h => {
+        const ts = typeof h.timestamp === 'string' ? h.timestamp : new Date(h.timestamp).toISOString();
+        return ts.startsWith(today);
+      });
       const startOfDayBalance = todayHistory.length > 0
         ? (todayHistory[0]?.balance || todayHistory[0]?.accountValue || totalRealizedBalance)
         : (sortedHistory[sortedHistory.length - 1]?.balance || sortedHistory[sortedHistory.length - 1]?.accountValue || totalRealizedBalance);
