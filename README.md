@@ -17,8 +17,35 @@ A high-performance copy trading bot for Hyperliquid DEX with real-time dashboard
 
 ```bash
 npm install
-cp .env.example .env  # Configure your wallets and keys
+cp accounts.example.json accounts.json  # Configure your accounts
 npm start
+```
+
+## Configuration
+
+Edit `accounts.json`:
+
+```json
+{
+  "privateKey": "0x...",
+  "accounts": [
+    {
+      "id": "main",
+      "name": "Main Account",
+      "trackedWallet": "0x...",
+      "userWallet": "0x...",
+      "enabled": true
+    },
+    {
+      "id": "sub1",
+      "name": "Subaccount 1",
+      "trackedWallet": "0x...",
+      "userWallet": "0x...",
+      "vaultAddress": "0x...",
+      "enabled": true
+    }
+  ]
+}
 ```
 
 ## Dashboard
@@ -29,15 +56,6 @@ Access at `http://localhost:3000` - includes:
 - Position allocation pie charts
 - 24h trading activity heatmap
 - Risk metrics (margin, drawdown, leverage)
-
-## Configuration
-
-```env
-TRACKED_WALLET=0x...
-USER_WALLET=0x...
-PRIVATE_KEY=0x...
-MIN_ORDER_VALUE=10
-```
 
 ## License
 
