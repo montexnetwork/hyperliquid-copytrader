@@ -445,9 +445,9 @@ function calculateEnhancedMetrics(summaryData, trades, balanceHistory) {
     if (pct > largestPosition.pct) largestPosition = { coin: p.coin, pct };
   });
 
-  const balances = balanceHistory.map(h => h.balance || h.accountValue || 0);
-  const peak = Math.max(...balances, totalBalance);
-  const drawdownPct = peak > 0 ? ((peak - totalBalance) / peak) * 100 : 0;
+  const balances = balanceHistory.map(h => h.balance || h.accountValue || 0).filter(b => b > 0);
+  const peak = balances.length > 0 ? Math.max(...balances, totalBalance) : totalBalance;
+  const drawdownPct = peak > 0 && peak > totalBalance ? ((peak - totalBalance) / peak) * 100 : 0;
 
   const tradesWithPnl = trades.filter(t => t.realizedPnl !== undefined);
   const winningTrades = tradesWithPnl.filter(t => t.realizedPnl > 0);
