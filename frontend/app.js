@@ -432,7 +432,11 @@ function calculateEnhancedMetrics(summaryData, trades, balanceHistory) {
   const totalUnrealizedPnl = allPositions.reduce((sum, p) => sum + (p.unrealizedPnl || 0), 0);
   const todayRealizedPnl = trades.reduce((sum, t) => sum + (t.realizedPnl || 0), 0);
 
-  const totalMargin = allPositions.reduce((sum, p) => sum + (p.marginUsed || 0), 0);
+  const totalNotional = allPositions.reduce((sum, p) => sum + Math.abs(p.notionalValue || 0), 0);
+  const avgLeverageEst = allPositions.length > 0
+    ? allPositions.reduce((sum, p) => sum + (p.leverage || 1), 0) / allPositions.length
+    : 1;
+  const totalMargin = allPositions.reduce((sum, p) => sum + (p.marginUsed || Math.abs(p.notionalValue || 0) / (p.leverage || 1)), 0);
   const marginUsagePct = totalBalance > 0 ? (totalMargin / totalBalance) * 100 : 0;
 
   let largestPosition = { coin: '-', pct: 0 };
@@ -547,21 +551,27 @@ async function loadSummaryView() {
     const allTrades = tradesData.trades || [];
 
     const totalBalance = summaryData.total?.balance || 0;
+    const totalUnrealizedPnl = summaryData.total?.unrealizedPnl || 0;
+    const totalRealizedBalance = totalBalance - totalUnrealizedPnl;
     const totalPositions = summaryData.total?.positions || 0;
     const accountCount = summaryData.total?.accountCount || 0;
     const tradesLast10Min = summaryData.total?.tradesLast10Min || 0;
     const tpm = (tradesLast10Min / 10).toFixed(1);
 
     document.getElementById('total-balance').textContent =
-      `$${totalBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      `$${totalRealizedBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     document.getElementById('total-tpm').textContent = tpm;
 
     const allHistoryPoints = Object.values(allBalanceHistory).flat();
     let balanceChange = 0;
     if (allHistoryPoints.length > 0) {
       const sortedHistory = allHistoryPoints.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-      const firstBalance = sortedHistory[0]?.balance || sortedHistory[0]?.accountValue || totalBalance;
-      balanceChange = firstBalance > 0 ? ((totalBalance - firstBalance) / firstBalance) * 100 : 0;
+      const today = new Date().toISOString().split('T')[0];
+      const todayHistory = sortedHistory.filter(h => h.timestamp.startsWith(today));
+      const startOfDayBalance = todayHistory.length > 0
+        ? (todayHistory[0]?.balance || todayHistory[0]?.accountValue || totalRealizedBalance)
+        : (sortedHistory[sortedHistory.length - 1]?.balance || sortedHistory[sortedHistory.length - 1]?.accountValue || totalRealizedBalance);
+      balanceChange = startOfDayBalance > 0 ? ((totalRealizedBalance - startOfDayBalance) / startOfDayBalance) * 100 : 0;
     }
 
     const metrics = calculateEnhancedMetrics(summaryData, allTrades, allHistoryPoints);
@@ -594,6 +604,7 @@ function renderAccountsSummaryGrid(accountSummaries) {
     const trackedPositions = summary.trackedPositions || [];
     const trackedByCoins = {};
     for (const pos of trackedPositions) trackedByCoins[pos.coin] = pos;
+    const realizedBalance = summary.balance - pnl;
 
     const maxNotional = Math.max(...positions.map(p => Math.abs(p.notionalValue || 0)), 1);
 
@@ -647,8 +658,8 @@ function renderAccountsSummaryGrid(accountSummaries) {
         <span class="summary-card-name">${summary.name}</span>
         <span class="summary-card-status ${statusClass}">${statusText}</span>
       </div>
-      <div class="summary-card-balance">$${summary.balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-      <div class="summary-card-pnl ${pnlClass}">PnL: ${pnlSign}$${Math.abs(pnl).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+      <div class="summary-card-balance">$${realizedBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+      <div class="summary-card-pnl ${pnlClass}">Unrealized: ${pnlSign}$${Math.abs(pnl).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
       <div class="summary-card-positions">${positions.length} open positions · ${accountTpm} trades/min</div>
       ${contentHtml}
     `;
