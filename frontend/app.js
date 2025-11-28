@@ -618,7 +618,7 @@ function renderAccountsSummaryGrid(accountSummaries) {
         const sideClass = pos.side === 'long' ? 'long' : 'short';
         const notional = Math.abs(pos.notionalValue || 0);
         const barPct = (notional / maxNotional) * 50;
-        const barColor = pos.side === 'long' ? '#17bf63' : '#e0245e';
+        const barColor = getSymbolColor(pos.coin);
         const barStyle = pos.side === 'long'
           ? `left: 50%; width: ${barPct}%;`
           : `right: 50%; width: ${barPct}%;`;
@@ -1190,7 +1190,7 @@ function renderPositionsTable() {
     const trackedEntryFormatted = trackedEntry ? '$' + trackedEntry.toLocaleString(undefined, {minimumFractionDigits: 4, maximumFractionDigits: 4}) : '-';
 
     const barPct = (notional / maxNotional) * 50;
-    const barColor = isLong ? '#17bf63' : '#e0245e';
+    const barColor = getSymbolColor(pos.coin);
     const barStyle = isLong
       ? `left: 50%; width: ${barPct}%;`
       : `right: 50%; width: ${barPct}%;`;
@@ -1272,7 +1272,7 @@ function renderTrackedPositionsTable(trackedPositions) {
     const entryFormatted = '$' + (pos.entryPrice || 0).toLocaleString(undefined, {minimumFractionDigits: 4, maximumFractionDigits: 4});
 
     const barPct = (notional / maxNotional) * 50;
-    const barColor = isLong ? '#17bf63' : '#e0245e';
+    const barColor = getSymbolColor(pos.coin);
     const barStyle = isLong
       ? `left: 50%; width: ${barPct}%;`
       : `right: 50%; width: ${barPct}%;`;
