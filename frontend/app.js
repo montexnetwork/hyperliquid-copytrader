@@ -1157,6 +1157,7 @@ async function fetchSnapshots(date = null) {
 
 function showNoData(date) {
   document.getElementById('positions-container').innerHTML = '<div class="no-positions">No data available</div>';
+  document.getElementById('tracked-positions-container').innerHTML = '<div class="no-positions">No tracked positions</div>';
   updateSelectedDateDisplay(date);
   renderDailyCards();
   renderBalanceHistoryChart();
