@@ -637,21 +637,30 @@ function renderActivityHeatmap(trades) {
 
   const hourlyBuckets = new Array(24).fill(0);
   const hourlyPnl = new Array(24).fill(0);
+  const hourLabels = new Array(24).fill(0);
   const now = new Date();
-  const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  const currentHour = now.getHours();
+
+  for (let i = 0; i < 24; i++) {
+    hourLabels[i] = (currentHour - 23 + i + 24) % 24;
+  }
 
   trades.forEach(trade => {
     const tradeTime = new Date(trade.timestamp);
-    if (tradeTime >= dayStart) {
-      const hour = tradeTime.getHours();
-      hourlyBuckets[hour]++;
-      hourlyPnl[hour] += trade.realizedPnl || 0;
+    if (tradeTime >= twentyFourHoursAgo && tradeTime <= now) {
+      const tradeHour = tradeTime.getHours();
+      const bucketIndex = hourLabels.indexOf(tradeHour);
+      if (bucketIndex !== -1) {
+        hourlyBuckets[bucketIndex]++;
+        hourlyPnl[bucketIndex] += trade.realizedPnl || 0;
+      }
     }
   });
 
   const maxTrades = Math.max(...hourlyBuckets, 1);
 
-  hourlyBuckets.forEach((count, hour) => {
+  hourlyBuckets.forEach((count, idx) => {
     const cell = document.createElement('div');
     cell.className = 'heatmap-cell';
 
@@ -664,9 +673,9 @@ function renderActivityHeatmap(trades) {
     else if (intensity > 0) level = 1;
 
     cell.classList.add(`level-${level}`);
-    cell.dataset.hour = hour;
+    cell.dataset.hour = hourLabels[idx];
     cell.dataset.count = count;
-    cell.dataset.pnl = hourlyPnl[hour].toFixed(2);
+    cell.dataset.pnl = hourlyPnl[idx].toFixed(2);
 
     cell.addEventListener('mouseenter', showHeatmapTooltip);
     cell.addEventListener('mouseleave', hideHeatmapTooltip);
@@ -674,7 +683,8 @@ function renderActivityHeatmap(trades) {
     container.appendChild(cell);
   });
 
-  [0, 6, 12, 18, 23].forEach(h => {
+  const axisHours = [hourLabels[0], hourLabels[6], hourLabels[12], hourLabels[18], hourLabels[23]];
+  axisHours.forEach(h => {
     const label = document.createElement('span');
     label.textContent = `${h}:00`;
     timeAxis.appendChild(label);
@@ -800,11 +810,10 @@ function updateEnhancedMetricsUI(metrics, balanceChange) {
 
 async function loadSummaryView() {
   try {
-    const today = new Date().toISOString().split('T')[0];
     const [summaryRes, historyRes, tradesRes] = await Promise.all([
       fetch('/api/summary'),
       fetch('/api/balance-history/all?days=10'),
-      fetch(`/api/trades?account=all&date=${today}`)
+      fetch('/api/trades?account=all&days=2')
     ]);
 
     const summaryData = await summaryRes.json();

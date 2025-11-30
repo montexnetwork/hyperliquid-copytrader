@@ -155,7 +155,19 @@ app.get('/api/trades', (req: Request, res: Response) => {
   try {
     const accountId = req.query.account as string
     const dateParam = req.query.date as string
-    const targetDate = dateParam || new Date().toISOString().split('T')[0]
+    const daysParam = parseInt(req.query.days as string) || 1
+    const days = Math.min(daysParam, 30)
+
+    const dates: string[] = []
+    for (let i = 0; i < days; i++) {
+      const date = new Date()
+      date.setDate(date.getDate() - i)
+      dates.push(date.toISOString().split('T')[0])
+    }
+    if (dateParam && !dates.includes(dateParam)) {
+      dates.length = 0
+      dates.push(dateParam)
+    }
 
     let trades: Array<Record<string, unknown>> = []
 
@@ -165,49 +177,56 @@ app.get('/api/trades', (req: Request, res: Response) => {
         : globalConfig.accounts.filter(a => a.enabled).map(a => a.id)
 
       for (const accId of accountIds) {
-        const dailyFilePath = path.join(DATA_DIR, accId, `trades-${targetDate}.jsonl`)
-        if (fs.existsSync(dailyFilePath)) {
-          const content = fs.readFileSync(dailyFilePath, 'utf-8')
-          const accTrades = content
-            .trim()
-            .split('\n')
-            .filter(line => line)
-            .map(line => ({ ...JSON.parse(line), accountId: accId }))
-          trades.push(...accTrades)
+        for (const targetDate of dates) {
+          const dailyFilePath = path.join(DATA_DIR, accId, `trades-${targetDate}.jsonl`)
+          if (fs.existsSync(dailyFilePath)) {
+            const content = fs.readFileSync(dailyFilePath, 'utf-8')
+            const accTrades = content
+              .trim()
+              .split('\n')
+              .filter(line => line)
+              .map(line => ({ ...JSON.parse(line), accountId: accId }))
+            trades.push(...accTrades)
+          }
         }
       }
     } else {
       const dataDir = accountId ? path.join(DATA_DIR, accountId) : DATA_DIR
-      const dailyFilePath = path.join(dataDir, `trades-${targetDate}.jsonl`)
-      const legacyFilePath = path.join(dataDir, 'trades.jsonl')
 
-      if (fs.existsSync(dailyFilePath)) {
-        const content = fs.readFileSync(dailyFilePath, 'utf-8')
-        trades = content
-          .trim()
-          .split('\n')
-          .filter(line => line)
-          .map(line => JSON.parse(line))
+      for (const targetDate of dates) {
+        const dailyFilePath = path.join(dataDir, `trades-${targetDate}.jsonl`)
+        if (fs.existsSync(dailyFilePath)) {
+          const content = fs.readFileSync(dailyFilePath, 'utf-8')
+          const dateTrades = content
+            .trim()
+            .split('\n')
+            .filter(line => line)
+            .map(line => JSON.parse(line))
+          trades.push(...dateTrades)
+        }
       }
 
-      if (trades.length === 0 && fs.existsSync(legacyFilePath)) {
-        const content = fs.readFileSync(legacyFilePath, 'utf-8')
-        const allTrades = content
-          .trim()
-          .split('\n')
-          .filter(line => line)
-          .map(line => JSON.parse(line))
+      if (trades.length === 0) {
+        const legacyFilePath = path.join(dataDir, 'trades.jsonl')
+        if (fs.existsSync(legacyFilePath)) {
+          const content = fs.readFileSync(legacyFilePath, 'utf-8')
+          const allTrades = content
+            .trim()
+            .split('\n')
+            .filter(line => line)
+            .map(line => JSON.parse(line))
 
-        trades = allTrades.filter(t => {
-          const tradeDate = new Date(t.timestamp).toISOString().split('T')[0]
-          return tradeDate === targetDate
-        })
+          trades = allTrades.filter(t => {
+            const tradeDate = new Date(t.timestamp).toISOString().split('T')[0]
+            return dates.includes(tradeDate)
+          })
+        }
       }
     }
 
     trades.sort((a, b) => (a.timestamp as number) - (b.timestamp as number))
 
-    res.json({ trades, count: trades.length, date: targetDate, accountId: accountId || 'default' })
+    res.json({ trades, count: trades.length, days, accountId: accountId || 'default' })
   } catch (error) {
     res.status(500).json({ error: 'Failed to read trades' })
   }
