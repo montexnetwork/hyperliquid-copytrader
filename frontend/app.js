@@ -1181,7 +1181,7 @@ async function fetchSnapshots(date = null) {
 
 function showNoData(date) {
   document.getElementById('positions-container').innerHTML = '<div class="no-positions">No data available</div>';
-  document.getElementById('tracked-positions-container').innerHTML = '<div class="no-positions">No tracked positions</div>';
+  document.getElementById('tracked-positions-container').innerHTML = '<div class="no-positions">No open positions</div>';
   updateSelectedDateDisplay(date);
   renderDailyCards();
   renderBalanceHistoryChart();
@@ -1543,6 +1543,7 @@ function renderPositionsTable() {
 
   if (userPositions.length === 0) {
     container.innerHTML = '<div class="no-positions">No open positions</div>';
+    renderTrackedPositionsTable(trackedPositions);
     return;
   }
 
@@ -1629,7 +1630,7 @@ function renderTrackedPositionsTable(trackedPositions) {
   const container = document.getElementById('tracked-positions-container');
 
   if (trackedPositions.length === 0) {
-    container.innerHTML = '<div class="no-positions">No tracked positions</div>';
+    container.innerHTML = '<div class="no-positions">No open positions</div>';
     return;
   }
 
