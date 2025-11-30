@@ -104,6 +104,28 @@ h1 {
   box-shadow: 0 8px 24px rgba(0, 212, 255, 0.15);
 }
 
+.summary-card-top {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.summary-card-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.summary-card-mini-chart {
+  width: 100px;
+  height: 50px;
+  flex-shrink: 0;
+}
+
+.summary-card-mini-chart canvas {
+  width: 100px !important;
+  height: 50px !important;
+}
+
 .summary-card-header {
   display: flex;
   justify-content: space-between;

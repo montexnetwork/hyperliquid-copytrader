@@ -896,6 +896,7 @@ function renderAccountsSummaryGrid(accountSummaries) {
     }
 
     const pieChartId = `allocation-pie-${summary.accountId}`;
+    const historyChartId = `history-mini-${summary.accountId}`;
 
     let contentHtml = '';
     if (positions.length > 0) {
@@ -908,13 +909,18 @@ function renderAccountsSummaryGrid(accountSummaries) {
     }
 
     card.innerHTML = `
-      <div class="summary-card-header">
-        <span class="summary-card-name">${summary.name}</span>
-        <span class="summary-card-status ${statusClass}">${statusText}</span>
+      <div class="summary-card-top">
+        <div class="summary-card-info">
+          <div class="summary-card-header">
+            <span class="summary-card-name">${summary.name}</span>
+            <span class="summary-card-status ${statusClass}">${statusText}</span>
+          </div>
+          <div class="summary-card-balance">$${realizedBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+          <div class="summary-card-pnl ${pnlClass}">Unrealized: ${pnlSign}$${Math.abs(pnl).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+          <div class="summary-card-positions">${positions.length} open positions · ${accountTpm} trades/min</div>
+        </div>
+        <div class="summary-card-mini-chart"><canvas id="${historyChartId}"></canvas></div>
       </div>
-      <div class="summary-card-balance">$${realizedBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-      <div class="summary-card-pnl ${pnlClass}">Unrealized: ${pnlSign}$${Math.abs(pnl).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-      <div class="summary-card-positions">${positions.length} open positions · ${accountTpm} trades/min</div>
       ${contentHtml}
     `;
 
@@ -923,7 +929,44 @@ function renderAccountsSummaryGrid(accountSummaries) {
     if (positions.length > 0) {
       renderAllocationPieChart(pieChartId, positions, summary.balance);
     }
+    renderAccountMiniChart(historyChartId, summary.accountId);
   }
+}
+
+function renderAccountMiniChart(chartId, accountId) {
+  const ctx = document.getElementById(chartId);
+  if (!ctx) return;
+
+  const history = allBalanceHistory[accountId] || [];
+  if (history.length === 0) return;
+
+  const balances = history.map(h => h.balance);
+  const firstBalance = balances[0];
+  const lastBalance = balances[balances.length - 1];
+  const isPositive = lastBalance >= firstBalance;
+  const color = isPositive ? '#17bf63' : '#e0245e';
+
+  new Chart(ctx.getContext('2d'), {
+    type: 'line',
+    data: {
+      labels: history.map(h => new Date(h.timestamp)),
+      datasets: [{
+        data: balances,
+        borderColor: color,
+        backgroundColor: color + '20',
+        borderWidth: 1.5,
+        tension: 0.3,
+        pointRadius: 0,
+        fill: true
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { enabled: false } },
+      scales: { x: { display: false }, y: { display: false } }
+    }
+  });
 }
 
 function renderAllocationPieChart(chartId, positions, accountBalance) {
