@@ -781,6 +781,21 @@ function updateEnhancedMetricsUI(metrics, balanceChange) {
     balanceChangeEl.textContent = `${balanceChange >= 0 ? '+' : ''}${balanceChange.toFixed(2)}%`;
     balanceChangeEl.className = `hero-metric-change ${balanceChange >= 0 ? 'positive' : 'negative'}`;
   }
+
+  const avgLeverageEl = document.getElementById('avg-leverage');
+  if (avgLeverageEl) {
+    avgLeverageEl.textContent = `${metrics.avgLeverage.toFixed(1)}x`;
+  }
+
+  const tradesTodayEl = document.getElementById('total-trades-today');
+  if (tradesTodayEl) {
+    tradesTodayEl.textContent = metrics.totalTradesToday;
+  }
+
+  const activeCoinsEl = document.getElementById('active-coins');
+  if (activeCoinsEl) {
+    activeCoinsEl.textContent = metrics.activeCoins;
+  }
 }
 
 async function loadSummaryView() {
