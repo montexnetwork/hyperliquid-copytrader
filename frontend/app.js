@@ -974,21 +974,40 @@ function renderAllocationPieChart(chartId, positions, accountBalance) {
 function renderCombinedBalanceChart() {
   if (chartInstances['combined-balance-chart']) chartInstances['combined-balance-chart'].destroy();
 
-  const timestampMap = new Map();
+  const accountIds = Object.keys(allBalanceHistory);
+  const accountCount = accountIds.length;
+  if (accountCount === 0) return;
+
+  const bucketInterval = 5 * 60 * 1000;
+  const bucketMap = new Map();
 
   for (const [accountId, history] of Object.entries(allBalanceHistory)) {
     for (const h of history) {
-      const ts = h.timestamp;
-      if (!timestampMap.has(ts)) {
-        timestampMap.set(ts, { timestamp: ts, total: 0 });
+      const bucketKey = Math.floor(h.timestamp / bucketInterval) * bucketInterval;
+      if (!bucketMap.has(bucketKey)) {
+        bucketMap.set(bucketKey, { timestamp: bucketKey, balances: {}, lastBalances: {} });
       }
-      timestampMap.get(ts).total += h.balance || 0;
+      bucketMap.get(bucketKey).balances[accountId] = h.balance || 0;
     }
   }
 
-  const aggregatedData = Array.from(timestampMap.values())
-    .sort((a, b) => a.timestamp - b.timestamp)
-    .map(d => ({ x: new Date(d.timestamp), y: d.total }));
+  const sortedBuckets = Array.from(bucketMap.values()).sort((a, b) => a.timestamp - b.timestamp);
+
+  const lastKnownBalances = {};
+  const aggregatedData = [];
+
+  for (const bucket of sortedBuckets) {
+    for (const accId of accountIds) {
+      if (bucket.balances[accId] !== undefined) {
+        lastKnownBalances[accId] = bucket.balances[accId];
+      }
+    }
+
+    if (Object.keys(lastKnownBalances).length === accountCount) {
+      const total = Object.values(lastKnownBalances).reduce((sum, b) => sum + b, 0);
+      aggregatedData.push({ x: new Date(bucket.timestamp), y: total });
+    }
+  }
 
   if (aggregatedData.length === 0) return;
 
