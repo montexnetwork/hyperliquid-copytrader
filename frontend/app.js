@@ -840,6 +840,13 @@ async function loadSummaryView() {
 }
 
 function renderAccountsSummaryGrid(accountSummaries) {
+  Object.keys(chartInstances).forEach(key => {
+    if (key.startsWith('history-mini-') || key.startsWith('allocation-pie-')) {
+      chartInstances[key].destroy();
+      delete chartInstances[key];
+    }
+  });
+
   const container = document.getElementById('accounts-summary-grid');
   container.innerHTML = '';
 
@@ -937,6 +944,10 @@ function renderAccountMiniChart(chartId, accountId) {
   const ctx = document.getElementById(chartId);
   if (!ctx) return;
 
+  if (chartInstances[chartId]) {
+    chartInstances[chartId].destroy();
+  }
+
   const history = allBalanceHistory[accountId] || [];
   if (history.length === 0) return;
 
@@ -946,7 +957,7 @@ function renderAccountMiniChart(chartId, accountId) {
   const isPositive = lastBalance >= firstBalance;
   const color = isPositive ? '#17bf63' : '#e0245e';
 
-  new Chart(ctx.getContext('2d'), {
+  chartInstances[chartId] = new Chart(ctx.getContext('2d'), {
     type: 'line',
     data: {
       labels: history.map(h => new Date(h.timestamp)),
@@ -977,6 +988,10 @@ function renderAllocationPieChart(chartId, positions, accountBalance) {
   const ctx = document.getElementById(chartId);
   if (!ctx) return;
 
+  if (chartInstances[chartId]) {
+    chartInstances[chartId].destroy();
+  }
+
   const positionData = positions.map(pos => ({
     coin: pos.coin,
     pct: (Math.abs(pos.notionalValue || 0) / accountBalance) * 100
@@ -989,7 +1004,7 @@ function renderAllocationPieChart(chartId, positions, accountBalance) {
   const data = [...positionData.map(p => p.pct), cashPct];
   const colors = [...positionData.map(p => getSymbolColor(p.coin)), '#38444d'];
 
-  new Chart(ctx.getContext('2d'), {
+  chartInstances[chartId] = new Chart(ctx.getContext('2d'), {
     type: 'doughnut',
     data: {
       labels,
@@ -1421,6 +1436,13 @@ function renderRiskChart() {
 }
 
 function renderDailyCards() {
+  Object.keys(chartInstances).forEach(key => {
+    if (key.startsWith('daily-chart-')) {
+      chartInstances[key].destroy();
+      delete chartInstances[key];
+    }
+  });
+
   const container = document.getElementById('daily-cards-grid');
   container.innerHTML = '';
 
@@ -1469,7 +1491,11 @@ async function renderDailyMiniChart(chartId, date, isPositive) {
     const ctx = document.getElementById(chartId);
     if (!ctx) return;
 
-    new Chart(ctx.getContext('2d'), {
+    if (chartInstances[chartId]) {
+      chartInstances[chartId].destroy();
+    }
+
+    chartInstances[chartId] = new Chart(ctx.getContext('2d'), {
       type: 'line',
       data: {
         labels: data.snapshots.map(s => new Date(s.timestamp)),
