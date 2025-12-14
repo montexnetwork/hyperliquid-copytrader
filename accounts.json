@@ -1,15 +1,15 @@
 {
   "_comment": "Copy this file to accounts.json and fill in your values",
 
-  "privateKey": "0x6a54522228a6b24971de9103b54f0323347f4b2808d821a4a76c9013290d4741",
+  "privateKey": "0x...",
   "isTestnet": false,
 
   "globalMinOrderValue": 11,
   "globalDriftThresholdPercent": 1,
 
   "telegram": {
-    "botToken": "7140810436:AAFQCficvqOWtcE8Z9VR1CgykeieGgpJ7JU",
-    "chatId": "6120804587",
+    "botToken": "your-telegram-bot-token",
+    "chatId": "your-chat-id",
     "polling": true
   },
 
@@ -20,15 +20,15 @@
       "_comment": "Main account - trades directly from wallet",
       "id": "main",
       "name": "Main Account",
-      "trackedWallet": "0x3979bdf742ce46c9dcd570c70d2d6e88b87df0e9",
-      "userWallet": "0xFb1a5c554731D2Fc73b340d4c478928231edF820",
+      "trackedWallet": "0x...",
+      "userWallet": "0x...",
       "enabled": true
     },
     {
       "_comment": "Subaccount - trades through a vault",
       "id": "sub1",
       "name": "Subaccount 1",
-      "trackedWallet": "0xba5f4f92f396e6de20d3dae5eefa65f4ecca806a",
+      "trackedWallet": "0x...",
       "userWallet": "0x...",
       "vaultAddress": "0x...",
       "enabled": true,
