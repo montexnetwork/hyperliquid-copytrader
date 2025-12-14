@@ -1,6 +1,4 @@
 {
-  "_comment": "Copy this file to accounts.json and fill in your values",
-
   "privateKey": "0x6a54522228a6b24971de9103b54f0323347f4b2808d821a4a76c9013290d4741",
   "isTestnet": false,
 
@@ -17,7 +15,6 @@
 
   "accounts": [
     {
-      "_comment": "Main account - trades directly from wallet",
       "id": "main",
       "name": "Main Account",
       "trackedWallet": "0x3979bdf742ce46c9dcd570c70d2d6e88b87df0e9.",
@@ -25,7 +22,6 @@
       "enabled": true
     },
     {
-      "_comment": "Subaccount - trades through a vault",
       "id": "sub1",
       "name": "Subaccount 1",
       "trackedWallet": "0x...",
